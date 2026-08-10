@@ -1,5 +1,5 @@
 """
-Research paper record validation (Sections 25, 36).
+Record validation schemas for research papers and news articles.
 
 This is the schema gate every parsed record must pass before being
 persisted. It never repairs uncertain facts -- it either accepts a record
@@ -8,7 +8,7 @@ truly required field is missing/invalid.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -60,5 +60,75 @@ def validate_research_paper(data: dict) -> tuple[ResearchPaperRecord | None, str
     """
     try:
         return ResearchPaperRecord(**data), None
+    except Exception as exc:  # noqa: BLE001 - surfaced as a rejection reason, not a crash
+        return None, str(exc)
+
+
+class NewsRecord(BaseModel):
+    """News article record validation (Phase 6).
+
+    Validates news articles before persistence, enforcing required fields
+    and data quality standards per requirements.md Section 9.
+    """
+
+    schema_version: str = "1.0"
+    record_type: str = "NEWS"
+
+    title: str = Field(min_length=1)
+    url: str
+    source_name: str = Field(min_length=1)
+    published_at: datetime
+    full_text_location: str = Field(min_length=1)
+    extracted_metadata: dict = Field(default_factory=dict)
+    raw_document_id: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _url_must_be_http(cls, v: str) -> str:
+        # Validate shape via HttpUrl without permanently changing the type
+        HttpUrl(v)
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("title must not be blank/whitespace-only")
+        return stripped
+
+    @field_validator("source_name")
+    @classmethod
+    def _source_name_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("source_name must not be blank/whitespace-only")
+        return stripped
+
+    @field_validator("full_text_location")
+    @classmethod
+    def _full_text_location_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("full_text_location must not be blank/whitespace-only")
+        return stripped
+
+    @field_validator("published_at")
+    @classmethod
+    def _published_at_utc(cls, v: datetime) -> datetime:
+        """Normalize published_at to UTC timezone-aware datetime."""
+        if v.tzinfo is None:
+            # Assume UTC for naive datetimes
+            return v.replace(tzinfo=timezone.utc)
+        # Convert to UTC if already timezone-aware
+        return v.astimezone(timezone.utc)
+
+
+def validate_news_record(data: dict) -> tuple[NewsRecord | None, str | None]:
+    """Returns (validated_record, None) on success or (None, error_message)
+    on failure. Never raises -- callers use the tuple to decide accept/reject.
+    """
+    try:
+        return NewsRecord(**data), None
     except Exception as exc:  # noqa: BLE001 - surfaced as a rejection reason, not a crash
         return None, str(exc)

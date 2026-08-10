@@ -86,14 +86,14 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         known_limitations="Feed is capped to recent items; older items are unreachable via this adapter.",
     ),
     SourceDefinition(
-        name="venturebeat_ai_rss",
+        name="theverge_ai_rss",
         vertical=Vertical.NEWS,
-        base_url="https://venturebeat.com/category/ai/feed/",
+        base_url="https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
         discovery=DiscoveryMechanism.RSS_ATOM,
         parsing_strategy="RSS 2.0 -> title/link/description; full text via article page extraction",
         date_strategy="RSS <pubDate> normalized to UTC",
         rate_limit_notes="Standard polite crawling.",
-        known_limitations="Some articles are paywalled past the excerpt.",
+        known_limitations="Feed availability and article access may vary by source-side changes.",
     ),
     SourceDefinition(
         name="mit_technology_review_ai_rss",
@@ -103,7 +103,7 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         parsing_strategy="RSS 2.0 -> title/link/description",
         date_strategy="RSS <pubDate> normalized to UTC",
         rate_limit_notes="Standard polite crawling.",
-        known_limitations="Lower publication frequency than TechCrunch/VentureBeat.",
+        known_limitations="Lower publication frequency than TechCrunch.",
     ),
     SourceDefinition(
         name="synced_review_rss",
