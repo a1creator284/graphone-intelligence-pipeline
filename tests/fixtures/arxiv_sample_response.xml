@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <link href="http://export.arxiv.org/api/query" rel="self" type="application/atom+xml"/>
+  <title type="text">ArXiv Query Results</title>
+  <id>http://export.arxiv.org/api/cIsPWiwLc6qOGh0vHqOveDQGb7I</id>
+  <updated>2026-08-09T00:00:00-04:00</updated>
+  <opensearch:totalResults xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">2</opensearch:totalResults>
+  <opensearch:startIndex xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">0</opensearch:startIndex>
+  <opensearch:itemsPerPage xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">50</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2601.01234v1</id>
+    <updated>2026-08-09T15:30:00Z</updated>
+    <published>2026-08-09T15:30:00Z</published>
+    <title>Efficient Sparse Attention for Long-Context Transformers</title>
+    <summary>We propose a sparse attention mechanism that reduces memory
+      overhead for long-context transformers. Code available at
+      https://github.com/example-lab/sparse-attention for reproducibility.</summary>
+    <author><name>Jane Doe</name></author>
+    <author><name>John Smith</name></author>
+    <arxiv:comment xmlns:arxiv="http://arxiv.org/schemas/atom">15 pages, 4 figures</arxiv:comment>
+    <link href="http://arxiv.org/abs/2601.01234v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.AI"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2601.05678v2</id>
+    <updated>2026-08-08T09:00:00Z</updated>
+    <published>2026-08-08T09:00:00Z</published>
+    <title>A Survey of Retrieval-Augmented Generation Methods</title>
+    <summary>This survey covers recent advances in retrieval-augmented
+      generation without releasing an accompanying implementation.</summary>
+    <author><name>Alice Wong</name></author>
+    <link href="http://arxiv.org/abs/2601.05678v2" rel="alternate" type="text/html"/>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.CL"/>
+  </entry>
+  <entry>
+    <id>not-a-valid-url</id>
+    <updated>2026-08-07T00:00:00Z</updated>
+    <published>2026-08-07T00:00:00Z</published>
+    <title>Entry With Malformed Identifier (adapter-level checks pass, schema validation must reject)</title>
+    <summary>This entry exists purely to test that the schema validation
+      layer catches a non-URL paper identifier that slipped past the
+      adapter's truthiness-only check.</summary>
+    <author><name>Bob Malformed</name></author>
+    <link href="not-a-valid-url" rel="alternate" type="text/html"/>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.LG"/>
+  </entry>
+</feed>

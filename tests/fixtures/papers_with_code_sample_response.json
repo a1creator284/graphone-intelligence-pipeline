@@ -1,0 +1,42 @@
+{
+  "count": 3,
+  "next": "https://paperswithcode.com/api/v1/papers/?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": "efficient-sparse-attention-for-long",
+      "title": "Efficient Sparse Attention for Long-Context Transformers",
+      "abstract": "We propose a sparse attention mechanism...",
+      "url_abs": "https://paperswithcode.com/paper/efficient-sparse-attention-for-long",
+      "url_pdf": "https://arxiv.org/pdf/2601.01234v1.pdf",
+      "published": "2026-08-09",
+      "authors": ["Jane Doe", "John Smith"],
+      "repository": {
+        "url": "https://github.com/example-lab/sparse-attention",
+        "owner": "example-lab",
+        "name": "sparse-attention",
+        "is_official": true
+      }
+    },
+    {
+      "id": "a-survey-of-retrieval-augmented",
+      "title": "A Survey of Retrieval-Augmented Generation Methods",
+      "abstract": "This survey covers recent advances...",
+      "url_abs": "https://paperswithcode.com/paper/a-survey-of-retrieval-augmented",
+      "url_pdf": "https://arxiv.org/pdf/2601.05678v2.pdf",
+      "published": "2026-08-08",
+      "authors": ["Alice Wong"],
+      "repository": null
+    },
+    {
+      "id": "malformed-entry-missing-title",
+      "title": "",
+      "abstract": "This entry has no title and should be skipped.",
+      "url_abs": "https://paperswithcode.com/paper/malformed-entry-missing-title",
+      "url_pdf": null,
+      "published": null,
+      "authors": [],
+      "repository": null
+    }
+  ]
+}

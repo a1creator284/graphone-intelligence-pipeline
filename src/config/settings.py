@@ -1,0 +1,94 @@
+"""
+Centralized application configuration.
+
+All configuration comes from environment variables (optionally loaded from a
+.env file in local development). Nothing here is hardcoded to a secret value.
+See .env.example for the full list of supported variables.
+"""
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # ---- Environment -------------------------------------------------
+    environment: Literal["development", "test", "production"] = "development"
+    log_level: str = "INFO"
+    log_format: Literal["json", "console"] = "json"
+
+    # ---- Datastores ----------------------------------------------------
+    # Defaults point at local dev services (see docker-compose.yml). In
+    # production these MUST be overridden via environment variables.
+    database_url: str = Field(
+        default="postgresql+asyncpg://graphone:graphone@localhost:5432/graphone"
+    )
+    redis_url: str = Field(default="redis://localhost:6379/0")
+
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_timeout_seconds: int = 30
+
+    # ---- LLM providers ---------------------------------------------------
+    gemini_api_key: str | None = None
+    groq_api_key: str | None = None
+    deepseek_api_key: str | None = None
+
+    # Fallback order the orchestrator walks through. Configurable so a
+    # provider outage doesn't require a code change.
+    llm_provider_order: list[str] = Field(default_factory=lambda: ["gemini", "groq", "deepseek"])
+
+    llm_request_timeout_seconds: float = 60.0
+    llm_max_retries: int = 3
+    # Approximate token budget per provider/model; used by the chunker to
+    # decide when a document needs to be split (see extraction/chunker.py).
+    llm_token_budget: int = 12000
+
+    # ---- GitHub enrichment ----------------------------------------------
+    github_token: str | None = None
+    github_api_base_url: str = "https://api.github.com"
+
+    # ---- Google Sheets export --------------------------------------------
+    google_service_account_json: str | None = None  # raw JSON or a file path
+    google_sheet_id: str | None = None
+
+    # ---- Crawling / concurrency ------------------------------------------
+    max_concurrency: int = 20
+    request_timeout_seconds: float = 20.0
+    max_retries: int = 5
+    retry_base_delay_seconds: float = 0.5
+    retry_max_delay_seconds: float = 30.0
+
+    # ---- Freshness ---------------------------------------------------------
+    freshness_window_hours: int = 24
+
+    # ---- Object storage (raw HTML) ----------------------------------------
+    raw_storage_backend: Literal["local", "s3"] = "local"
+    raw_storage_local_path: str = "./data/raw"
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+
+    @field_validator("llm_provider_order", mode="before")
+    @classmethod
+    def _split_csv(cls, v: object) -> object:
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return a process-wide cached Settings instance."""
+    return Settings()
