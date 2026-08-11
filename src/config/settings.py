@@ -13,6 +13,11 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Requirement 4.10: CLOCK_SKEW_TOLERANCE_SECONDS must not exceed 300s (5min).
+# This tolerance exists for minor server clock drift on "just published"
+# articles, not for accepting genuinely future-scheduled content.
+MAX_CLOCK_SKEW_TOLERANCE_SECONDS = 300
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -70,7 +75,11 @@ class Settings(BaseSettings):
     retry_max_delay_seconds: float = 30.0
 
     # ---- Freshness ---------------------------------------------------------
+    # Requirement 4: strict 24h freshness window, with a small configurable
+    # tolerance for "just published" server clock drift (not for genuinely
+    # future-scheduled articles -- see MAX_CLOCK_SKEW_TOLERANCE_SECONDS below).
     freshness_window_hours: int = 24
+    clock_skew_tolerance_seconds: int = 60
 
     # ---- Object storage (raw HTML) ----------------------------------------
     raw_storage_backend: Literal["local", "s3"] = "local"
@@ -85,6 +94,22 @@ class Settings(BaseSettings):
     def _split_csv(cls, v: object) -> object:
         if isinstance(v, str):
             return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
+    @field_validator("clock_skew_tolerance_seconds")
+    @classmethod
+    def _clock_skew_tolerance_within_hard_cap(cls, v: int) -> int:
+        """Requirement 4.10: this tolerance exists for minor server clock
+        drift, not for accepting genuinely future-scheduled articles -- so
+        it is capped, not just defaulted. A misconfigured value is rejected
+        outright (fail fast) rather than silently clamped."""
+        if v < 0:
+            raise ValueError("clock_skew_tolerance_seconds must not be negative")
+        if v > MAX_CLOCK_SKEW_TOLERANCE_SECONDS:
+            raise ValueError(
+                f"clock_skew_tolerance_seconds ({v}) exceeds the "
+                f"{MAX_CLOCK_SKEW_TOLERANCE_SECONDS}s hard cap (Requirement 4.10)"
+            )
         return v
 
 
