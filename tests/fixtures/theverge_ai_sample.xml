@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>The Verge - Artificial Intelligence</title>
+  <link>https://www.theverge.com/ai-artificial-intelligence</link>
+  <description>The latest news about artificial intelligence and machine learning from The Verge.</description>
+  <item>
+    <title>Microsoft Integrates Next-Gen AI Assistant Across Windows Platform</title>
+    <link>https://www.theverge.com/2026/8/10/24150101/microsoft-windows-next-gen-ai-assistant-integration</link>
+    <pubDate>Mon, 10 Aug 2026 15:00:00 +0000</pubDate>
+    <description>Microsoft is rolling out an updated AI assistant with deeper operating system integration and real-time contextual awareness.</description>
+  </item>
+  <item>
+    <title>Anthropic Launches Claude 4 with Multimodal Audio and Video Processing</title>
+    <link>https://www.theverge.com/2026/8/10/24150202/anthropic-claude-4-multimodal-audio-video-release</link>
+    <pubDate>Mon, 10 Aug 2026 11:30:00 +0000</pubDate>
+    <description>Anthropic has released its flagship Claude 4 model featuring native real-time audio analysis and video understanding capabilities.</description>
+  </item>
+  <item>
+    <title>Open Source AI Community Unveils Open Llama 3 70B Competitor</title>
+    <link>https://www.theverge.com/2026/8/10/24150303/open-source-ai-community-unveils-70b-model</link>
+    <pubDate>Mon, 10 Aug 2026 08:15:00 +0000</pubDate>
+    <description>A coalition of open source researchers has released a fully open weights 70-billion parameter model matching proprietary performance.</description>
+  </item>
+</channel>
+</rss>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Synced - AI Technology &amp; Industry Review</title>
+  <link>https://syncedreview.com/</link>
+  <description>Latest AI research papers, industry trends, and machine learning breakthroughs.</description>
+  <item>
+    <title>Stanford &amp; Google Propose Mixture-of-Experts Architecture for Vision Transformers</title>
+    <link>https://syncedreview.com/2026/08/10/stanford-google-propose-moe-vision-transformers/</link>
+    <pubDate>Mon, 10 Aug 2026 16:00:00 +0000</pubDate>
+    <description>A joint research team introduces a sparse Mixture-of-Experts Vision Transformer that reduces computation costs by 40 percent while improving accuracy.</description>
+  </item>
+  <item>
+    <title>DeepMind Introduces AlphaDiffusion for High-Fidelity 3D Scene Generation</title>
+    <link>https://syncedreview.com/2026/08/10/deepmind-introduces-alphadiffusion-3d-generation/</link>
+    <pubDate>Mon, 10 Aug 2026 12:30:00 +0000</pubDate>
+    <description>AlphaDiffusion generates photo-realistic 3D assets from single-view images in seconds using latents from diffusion model representations.</description>
+  </item>
+  <item>
+    <title>Survey on Test-Time Compute Scaling Laws in Frontier Reasoning Models</title>
+    <link>https://syncedreview.com/2026/08/10/survey-test-time-compute-scaling-laws/</link>
+    <pubDate>Mon, 10 Aug 2026 08:45:00 +0000</pubDate>
+    <description>This paper reviews recent empirical findings on allocating inference-time computation budget to optimize reasoning performance in LLMs.</description>
+  </item>
+</channel>
+</rss>

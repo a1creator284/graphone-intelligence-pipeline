@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>TechCrunch - AI</title>
+  <link>https://techcrunch.com/category/artificial-intelligence/</link>
+  <description>AI News from TechCrunch</description>
+  <item>
+    <title>Startup Raises $100M for Enterprise AI Platform</title>
+    <link>https://techcrunch.com/2026/08/10/startup-raises-100m-enterprise-ai/</link>
+    <pubDate>Mon, 10 Aug 2026 14:30:00 +0000</pubDate>
+    <description>A San Francisco-based startup has raised $100 million in Series B funding for its enterprise AI platform.</description>
+  </item>
+  <item>
+    <title>Google Unveils New Machine Learning Tools for Developers</title>
+    <link>https://techcrunch.com/2026/08/10/google-ml-tools-developers/</link>
+    <pubDate>Mon, 10 Aug 2026 12:00:00 +0000</pubDate>
+    <description>Google announced a suite of new machine learning tools aimed at making AI more accessible to developers.</description>
+  </item>
+  <item>
+    <title>AI Ethics Board Releases New Guidelines for Responsible AI</title>
+    <link>https://techcrunch.com/2026/08/10/ai-ethics-guidelines/</link>
+    <pubDate>Mon, 10 Aug 2026 09:00:00 +0000</pubDate>
+    <description>The international AI ethics board has released comprehensive guidelines for responsible AI development.</description>
+  </item>
+</channel>
+</rss>

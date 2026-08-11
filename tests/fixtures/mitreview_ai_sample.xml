@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>MIT Technology Review - Artificial Intelligence</title>
+  <link>https://www.technologyreview.com/topic/artificial-intelligence/</link>
+  <description>In-depth coverage of AI research, machine learning breakthroughs, and technological impact from MIT Technology Review.</description>
+  <item>
+    <title>Why Neuromorphic Computing Could Solve AI's Massive Energy Crisis</title>
+    <link>https://www.technologyreview.com/2026/08/10/1098123/neuromorphic-computing-ai-energy-crisis/</link>
+    <pubDate>Mon, 10 Aug 2026 13:45:00 +0000</pubDate>
+    <description>Brain-inspired hardware designs are proving dramatically more energy efficient than traditional GPU clusters for deep learning inference.</description>
+  </item>
+  <item>
+    <title>Researchers Discover Self-Correcting Mechanisms in Large Language Models</title>
+    <link>https://www.technologyreview.com/2026/08/10/1098124/self-correcting-mechanisms-llms/</link>
+    <pubDate>Mon, 10 Aug 2026 10:15:00 +0000</pubDate>
+    <description>A new study reveals internal representations that enable transformer architectures to detect and rectify internal hallucination paths.</description>
+  </item>
+  <item>
+    <title>Quantum Neural Networks Demonstrate Quantum Advantage in Molecular Simulation</title>
+    <link>https://www.technologyreview.com/2026/08/10/1098125/quantum-neural-networks-molecular-simulation/</link>
+    <pubDate>Mon, 10 Aug 2026 07:30:00 +0000</pubDate>
+    <description>Hybrid quantum-classical neural networks have simulated complex biochemical reactions beyond the reach of classical supercomputers.</description>
+  </item>
+</channel>
+</rss>
