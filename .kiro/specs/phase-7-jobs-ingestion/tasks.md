@@ -22,11 +22,11 @@ This document breaks down the implementation of Phase 7 (Jobs Ingestion) into in
   - [x] 3.2 Implement heuristic extraction for `title` and `company` from the comment string.
   - [x] 3.3 Write mocked unit tests for Algolia Thread/Comment extraction and heuristics.
 
-- [ ] 4. Implement Sitemap & JSON-LD adapters (Wellfound and BuiltIn)
-  - [ ] 4.1 Create `src/crawlers/sitemap_jobs_base.py` for shared XML sitemap fetching logic.
-  - [ ] 4.2 Create `src/crawlers/wellfound.py` and `src/crawlers/builtin.py` extending the base class.
-  - [ ] 4.3 Implement `JobPosting` JSON-LD extraction to parse `title`, `hiringOrganization.name`, `datePosted`.
-  - [ ] 4.4 Write mocked unit tests for XML Sitemap parsing and HTML JSON-LD extraction.
+- [x] 4. Implement Sitemap & JSON-LD adapters (Wellfound and BuiltIn)
+  - [x] 4.1 Create `src/crawlers/sitemap_jobs_base.py` for shared XML sitemap fetching logic.
+  - [x] 4.2 Create `src/crawlers/wellfound.py` and `src/crawlers/builtin.py` extending the base class.
+  - [x] 4.3 Implement `JobPosting` JSON-LD extraction to parse `title`, `hiringOrganization.name`, `datePosted`.
+  - [x] 4.4 Write mocked unit tests for XML Sitemap parsing and HTML JSON-LD extraction.
 
 - [ ] 5. Implement jobs pipeline orchestration
   - [ ] 5.1 Wire all five adapters in `run_jobs_pipeline()`.
