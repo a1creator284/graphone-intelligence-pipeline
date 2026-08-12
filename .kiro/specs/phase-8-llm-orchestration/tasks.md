@@ -7,7 +7,7 @@
   - *Tests*: `tests/test_settings.py` checking validation of models.
   - *Acceptance Criteria*: Settings enforce models as configurable strings.
 
-- [ ] **Task 2: Provider Request Implementations**
+- [x] **Task 2: Provider Request Implementations**
   - *Objective*: Implement Gemini, Groq, and DeepSeek providers wrapping the internal `AsyncHttpClient`.
   - *Files*: `src/llm/providers/gemini.py`, `src/llm/providers/groq.py`, `src/llm/providers/deepseek.py`
   - *Dependency*: Task 1.

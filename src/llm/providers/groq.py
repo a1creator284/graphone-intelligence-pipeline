@@ -24,10 +24,13 @@ class GroqProvider(LLMProvider):
             "Authorization": f"Bearer {self._settings.groq_api_key}",
         }
         
+        schema_json = json.dumps(schema.model_json_schema())
+        augmented_system_instruction = f"{system_instruction}\n\nYou MUST respond in strictly valid JSON matching this schema:\n{schema_json}"
+
         payload = {
             "model": self._settings.groq_model,
             "messages": [
-                {"role": "system", "content": system_instruction},
+                {"role": "system", "content": augmented_system_instruction},
                 {"role": "user", "content": user_payload}
             ],
             "response_format": {"type": "json_object"}

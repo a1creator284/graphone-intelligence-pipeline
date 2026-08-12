@@ -21,8 +21,11 @@ class GeminiProvider(LLMProvider):
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._settings.gemini_model}:generateContent?key={self._settings.gemini_api_key}"
         
+        schema_json = json.dumps(schema.model_json_schema())
+        augmented_system_instruction = f"{system_instruction}\n\nYou MUST respond in strictly valid JSON matching this schema:\n{schema_json}"
+
         payload = {
-            "system_instruction": {"parts": [{"text": system_instruction}]},
+            "system_instruction": {"parts": [{"text": augmented_system_instruction}]},
             "contents": [{"parts": [{"text": user_payload}]}],
             "generationConfig": {"response_mime_type": "application/json"}
         }
