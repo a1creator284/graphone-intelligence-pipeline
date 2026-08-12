@@ -11,6 +11,18 @@ T = TypeVar("T", bound=BaseModel)
 class LLMProvider(abc.ABC):
     """Generic interface for all LLM providers."""
 
+    @property
+    @abc.abstractmethod
+    def provider_name(self) -> str:
+        """Short identifier for this provider (e.g. 'gemini', 'groq', 'deepseek')."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def model_name(self) -> str:
+        """The configured model identifier for this provider."""
+        ...
+
     @abc.abstractmethod
     async def generate(self, system_instruction: str, user_payload: str, schema: type[T]) -> T:
         """

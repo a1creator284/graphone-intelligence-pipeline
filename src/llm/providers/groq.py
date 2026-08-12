@@ -15,6 +15,14 @@ class GroqProvider(LLMProvider):
         self._http_client = http_client
         self._settings = get_settings()
 
+    @property
+    def provider_name(self) -> str:
+        return "groq"
+
+    @property
+    def model_name(self) -> str:
+        return self._settings.groq_model or ""
+
     async def generate(self, system_instruction: str, user_payload: str, schema: type[T]) -> T:
         if not self._settings.groq_api_key or not self._settings.groq_model:
             raise AuthenticationError("Groq API key or model not configured.")
