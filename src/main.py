@@ -110,6 +110,42 @@ async def _run_news(args: argparse.Namespace) -> None:
         )
 
 
+async def _run_jobs(args: argparse.Namespace) -> None:
+    """Run the jobs vertical pipeline (Phase 7 foundation)."""
+    from src.config.settings import get_settings
+    from src.pipeline.jobs import run_jobs_pipeline
+    from src.storage.database import get_session_factory
+
+    settings = get_settings()
+    engine = init_engine()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    factory = get_session_factory()
+    async with factory() as session:
+        result = await run_jobs_pipeline(
+            session,
+            target=args.target or 1000,
+            max_concurrency=args.workers or settings.max_concurrency,
+        )
+    logger.info(
+        "jobs_run_summary",
+        target=result.target,
+        discovered=result.discovered,
+        valid_records=result.valid_records,
+        duplicates=result.duplicates,
+        rejected=result.rejected,
+        by_source=result.by_source,
+    )
+    if result.target and result.valid_records < result.target:
+        logger.info(
+            "target_not_fully_met",
+            target=result.target,
+            valid_records=result.valid_records,
+            note="Jobs adapters will be wired in subsequent tasks.",
+        )
+
+
 async def _run(args: argparse.Namespace) -> int:
     if args.export:
         logger.info("export_not_yet_wired", note="Export module lands in Phase 13")
@@ -132,7 +168,9 @@ async def _run(args: argparse.Namespace) -> int:
             await _run_research(args)
         elif vertical == Vertical.NEWS and not args.dry_run:
             await _run_news(args)
-        elif vertical not in (Vertical.RESEARCH, Vertical.NEWS):
+        elif vertical == Vertical.JOBS and not args.dry_run:
+            await _run_jobs(args)
+        elif vertical not in (Vertical.RESEARCH, Vertical.NEWS, Vertical.JOBS):
             logger.info(
                 "vertical_not_yet_wired",
                 vertical=vertical.value,

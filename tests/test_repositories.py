@@ -125,3 +125,29 @@ async def test_raw_document_concurrent_inserts_return_winners_row():
         assert count == 1
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_job_upsert_returns_false_on_duplicate(db_session):
+    from src.storage.repositories import JobRepository
+    
+    repo = JobRepository(db_session)
+    inserted = await repo.upsert(
+        title="Software Engineer",
+        company="Tech Corp",
+        url="https://example.com/job1",
+        source_name="remoteok",
+        posted_at=datetime.now(timezone.utc),
+    )
+    assert inserted is True
+
+    inserted_again = await repo.upsert(
+        title="Software Engineer (Updated)",
+        company="Tech Corp",
+        url="https://example.com/job1",
+        source_name="remoteok",
+        posted_at=datetime.now(timezone.utc),
+    )
+    assert inserted_again is False
+
+    assert await repo.exists("remoteok", "https://example.com/job1") is True

@@ -151,3 +151,33 @@ async def test_raw_document_content_hash_uniqueness_enforced_by_db(db_session):
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
+
+
+@pytest.mark.asyncio
+async def test_job_raw_document_id_linkage_enforced(db_session):
+    from src.storage.models import Job, RawDocument
+    from datetime import datetime, timezone
+
+    rd1 = RawDocument(
+        source_name="remoteok",
+        source_url="https://example.com/job",
+        canonical_url="https://example.com/job",
+        http_status=200,
+        content_hash="job_hash_123",
+        extraction_status="extracted",
+    )
+    db_session.add(rd1)
+    await db_session.commit()
+
+    j1 = Job(
+        title="Software Engineer",
+        company="Tech Corp",
+        url="https://example.com/job",
+        posted_at=datetime.now(timezone.utc),
+        source_name="remoteok",
+        raw_document_id=rd1.id,
+    )
+    db_session.add(j1)
+    await db_session.commit()
+    
+    assert j1.raw_document_id == rd1.id

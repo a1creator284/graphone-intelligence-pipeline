@@ -295,6 +295,7 @@ class Job(Base):
     is_remote: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     role_family: Mapped[str | None] = mapped_column(String(60), nullable=True)
     source_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    raw_document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("raw_documents.id"), nullable=True)
     metadata_json: Mapped[dict] = mapped_column(PortableJSONB(), default=dict)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

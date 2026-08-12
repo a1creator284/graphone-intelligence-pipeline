@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.storage.models import EntityMappingLog, News, ProcessingError, RawDocument, ResearchPaper, Startup
+from src.storage.models import EntityMappingLog, Job, News, ProcessingError, RawDocument, ResearchPaper, Startup
 
 
 def _insert_for(session: AsyncSession):
@@ -141,3 +141,24 @@ class ProcessingErrorRepository:
         self.session.add(entry)
         await self.session.commit()
         return entry
+
+
+class JobRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def upsert(self, **fields) -> bool:
+        """Insert a job record if (source_name, url) hasn't been seen.
+        Returns True if a new row was inserted, False if it was a duplicate.
+        """
+        insert_ = _insert_for(self.session)
+        stmt = insert_(Job).values(**fields).on_conflict_do_nothing(
+            index_elements=["source_name", "url"]
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount > 0
+
+    async def exists(self, source_name: str, url: str) -> bool:
+        stmt = select(Job.id).where(Job.source_name == source_name, Job.url == url)
+        return (await self.session.execute(stmt)).first() is not None

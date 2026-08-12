@@ -93,3 +93,38 @@ def test_empty_authors_list_allowed():
     record, error = validate_research_paper(_valid_payload(authors=[]))
     assert error is None
     assert record.authors == []
+
+
+def _valid_job_payload(**overrides) -> dict:
+    from datetime import datetime, timezone
+
+    base = {
+        "title": "Software Engineer",
+        "company": "Tech Corp",
+        "url": "https://example.com/job",
+        "posted_at": datetime(2026, 8, 9, tzinfo=timezone.utc),
+        "source_name": "remoteok",
+        "is_remote": True,
+        "role_family": "engineering",
+        "raw_document_id": "12345678-1234-5678-1234-567812345678",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_valid_job_record_passes():
+    from src.validation.schemas import validate_job_record
+
+    record, error = validate_job_record(_valid_job_payload())
+    assert error is None
+    assert record is not None
+    assert record.title == "Software Engineer"
+
+
+def test_job_raw_document_id_accepted():
+    from src.validation.schemas import validate_job_record
+
+    payload = _valid_job_payload(raw_document_id="12345678-1234-5678-1234-567812345678")
+    record, error = validate_job_record(payload)
+    assert error is None
+    assert record.raw_document_id == "12345678-1234-5678-1234-567812345678"
