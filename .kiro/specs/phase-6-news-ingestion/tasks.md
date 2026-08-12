@@ -236,15 +236,15 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Add documentation note that endpoints require verification post-deployment (sandbox egress restricted)
     - _Requirements: 1.1, 12.10, 18.2, 18.3, 18.4_
 
-- [ ] 14. Wire news vertical into CLI and test end-to-end
-  - [ ] 14.1 Complete CLI integration for news vertical
+- [x] 14. Wire news vertical into CLI and test end-to-end
+  - [x] 14.1 Complete CLI integration for news vertical
     - Add _run_news() function to src/main.py matching _run_research() pattern
     - Call run_news_pipeline() with target, max_concurrency, reference_time parameters
     - Log aggregate stats: discovered, fetched, full_text_extracted, extraction_failed, rejected, persisted
     - Create database tables via Base.metadata.create_all() before pipeline execution
     - _Requirements: 13.1, 13.2, 13.3, 13.6, 13.7, 13.8, 14.6_
 
-  - [ ] 14.2 Write CLI integration test (MANDATORY: validates assessment CLI integration criteria)
+  - [x] 14.2 Write CLI integration test (MANDATORY: validates assessment CLI integration criteria)
     - Test `python -m src.main --vertical news --target 100 --workers 20` command
     - Verify all five adapters are initialized and executed
     - Verify final stats report includes all rejection categories
