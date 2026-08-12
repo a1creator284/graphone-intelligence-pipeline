@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from src.storage.database import build_engine
 from src.storage.models import Base
-from src.storage.repositories import NewsRepository
+from src.storage.repositories import NewsRepository, RawDocumentRepository
 
 
 @pytest.mark.asyncio
@@ -60,6 +60,68 @@ async def test_concurrent_workers_racing_same_url_produce_one_row():
         from src.storage.models import News
 
         count = (await session.execute(select(func.count()).select_from(News))).scalar_one()
+        assert count == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_raw_document_identical_html_different_urls_produces_one_row(db_session):
+    repo = RawDocumentRepository(db_session)
+    
+    rd1 = await repo.get_or_create(
+        source_name="hackernews_ai",
+        source_url="https://example.com/1",
+        canonical_url="https://example.com/1",
+        http_status=200,
+        content_hash="same_hash_123",
+        extraction_status="extracted",
+    )
+    
+    rd2 = await repo.get_or_create(
+        source_name="techcrunch_ai_rss",
+        source_url="https://example.com/2",
+        canonical_url="https://example.com/2",
+        http_status=200,
+        content_hash="same_hash_123",
+        extraction_status="extracted",
+    )
+    
+    assert rd1.id == rd2.id
+
+
+@pytest.mark.asyncio
+async def test_raw_document_concurrent_inserts_return_winners_row():
+    engine = build_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def worker():
+        async with factory() as session:
+            repo = RawDocumentRepository(session)
+            return await repo.get_or_create(
+                source_name="hackernews_ai",
+                source_url="https://example.com/race",
+                canonical_url="https://example.com/race",
+                http_status=200,
+                content_hash="concurrent_hash_123",
+                extraction_status="extracted",
+            )
+
+    results = await asyncio.gather(*(worker() for _ in range(10)))
+    
+    # All workers should get back a RawDocument object
+    assert all(r is not None for r in results)
+    
+    # All workers should get back the exact same row ID
+    first_id = results[0].id
+    assert all(r.id == first_id for r in results)
+
+    async with factory() as session:
+        from sqlalchemy import select, func
+        from src.storage.models import RawDocument
+        count = (await session.execute(select(func.count()).select_from(RawDocument))).scalar_one()
         assert count == 1
 
     await engine.dispose()

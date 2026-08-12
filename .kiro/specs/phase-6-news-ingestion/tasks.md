@@ -215,14 +215,14 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Each fixture should contain main article content (>100 characters) for extraction testing
     - _Requirements: 16.3, 16.5_
 
-- [ ] 12. Implement deduplication tests
-  - [ ] 12.1 Write URL deduplication tests (MANDATORY: validates assessment URL deduplication criteria)
+- [x] 12. Implement deduplication tests
+  - [x] 12.1 Write URL deduplication tests (MANDATORY: validates assessment URL deduplication criteria)
     - Test concurrent workers racing on same (source_name, url) produce exactly one row in News table
     - Test same article URL from different sources produces separate rows (per-source dedup)
     - Test URL normalization before persistence using normalize_url()
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 16.7_
 
-  - [ ] 12.2 Write content-hash deduplication tests (MANDATORY: validates assessment content-hash deduplication criteria)
+  - [x] 12.2 Write content-hash deduplication tests (MANDATORY: validates assessment content-hash deduplication criteria)
     - Test identical HTML from different URLs produces one raw_document row
     - Test content_hash uniqueness constraint enforcement
     - Test race condition handling: concurrent inserts return winner's row
