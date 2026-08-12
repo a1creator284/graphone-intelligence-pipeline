@@ -36,10 +36,10 @@ This document breaks down the implementation of Phase 7 (Jobs Ingestion) into in
   - [x] 5.5 Ensure proper structured logging matches the Phase 6 patterns (`pipeline_start`, `validation_failed`, etc.).
   - [x] 5.6 Write an integration test for the full jobs pipeline with mocked adapters, explicitly asserting that `raw_document_id` is linked.
 
-- [ ] 6. Final checkpoint & Verification
-  - [ ] 6.1 Ensure the full test suite runs without live network dependencies (`pytest -q`).
-  - [ ] 6.2 Verify CLI end-to-end simulated run (`python -m src.main --vertical jobs --dry-run`).
-  - [ ] 6.3 Update the main README to document the Jobs vertical features and architecture.
+- [x] 6. Final checkpoint & Verification
+  - [x] 6.1 Ensure the full test suite runs without live network dependencies (`pytest -q`).
+  - [x] 6.2 Verify CLI end-to-end simulated run (`python -m src.main --vertical jobs --dry-run`).
+  - [x] 6.3 Update the main README to document the Jobs vertical features and architecture.
 
 ## Dependencies
 - Tasks in section 2, 3, and 4 are independent and can be parallelized.

@@ -17,7 +17,9 @@ of this commit:**
 | 3 | Async crawler core: HTTP client, retry/backoff, worker pool | ✅ Done |
 | 4 | Research paper pipeline: arXiv + Papers With Code + GitHub enrichment | ✅ Done |
 | 5 | Deterministic date engine + 24h freshness utility | ✅ Done |
-| 6-16 | News, jobs, startups, products, LLM orchestration, entity resolution, export, final audit | ⏳ Not yet built |
+| 6 | News pipeline: 5 API/RSS sources, validation, freshness filtering | ✅ Done |
+| 7 | Jobs pipeline: 5 API/Sitemap sources, JSON-LD, validation, provenance | ✅ Done |
+| 8-16 | LLM orchestration, startups, products, entity resolution, export | ⏳ Not yet built |
 
 `python -m src.main --vertical research` **actually runs** end-to-end
 (arXiv + Papers With Code discovery → GitHub star enrichment → schema
@@ -179,6 +181,24 @@ python -m src.main --vertical news --dry-run                        # reports re
 
 **Environment Note:** The news endpoints are unreachable from the initial restricted sandbox environment (egress restricted to pypi, npmjs, github). Adapters will be verified against live sources post-deployment.
 
+## Jobs pipeline (Phase 7)
+
+`python -m src.main --vertical jobs --target 1000 --workers 50` orchestrates job ingestion across five sources:
+
+1. `RemoteOKAIAdapter` — JSON API filtered by AI/ML tags.
+2. `WorkingNomadsAIAdapter` — JSON API filtered for data/AI categories.
+3. `YCombinatorWhoIsHiringAdapter` — Algolia search targeting "Ask HN: Who is hiring?" thread comments.
+4. `WellfoundAIAdapter` — XML Sitemap discovery targeting `JobPosting` JSON-LD schema on job pages.
+5. `BuiltInAIAdapter` — XML Sitemap discovery targeting `JobPosting` JSON-LD schema.
+
+**Key Features:**
+- **JSON-LD Structured Extraction:** Relies strictly on `application/ld+json` schema standard blocks for sitemap-based adapters. Eliminates hallucination (e.g., guessing missing dates) by explicitly rejecting properties not structurally encoded in the DOM.
+- **Provenance Linkage:** The payload of any job fetching operation is immutably stored in the `RawDocumentRepository` immediately prior to structured persistence, binding the raw payload explicitly to the `JobRecord` using the `raw_document_id` foreign key.
+- **Anti-Hallucination:** Heuristics strictly fallback to nothing if parsing boundaries fail. Required properties like URL, title, source name, and posted date must resolve accurately.
+- **Freshness Validation:** Utilizes the shared `Date_Engine` (Phase 5) and strict 24-hour window configuration via `is_fresh` filtering. Future-dated bounds and excessively stale limits correctly trap out-of-bounds postings natively.
+- **Database-Level Deduplication:** Uses `INSERT ... ON CONFLICT DO NOTHING` on the exact `(source_name, url)` pair matching mechanism ensuring DB idempotency natively supports repeated idempotent CLI crawling.
+- **Deterministic Testing:** Mocked adapters run without relying on live website networks, ensuring `pytest` pipelines run flawlessly within sandbox egress bounds.
+
 ## Date engine and freshness (Phase 5)
 
 `src/extraction/dates.py` implements the full priority chain from Section
@@ -235,7 +255,4 @@ does not retry or attempt to defeat the block.
 
 ## Next phases
 
-Phase 6 (news pipeline: 5 RSS/API sources + freshness) is next, followed by
-jobs (Phase 7), then the LLM orchestration engine (Phase 8) which startups/
-products enrichment depends on. See `docs/DEVELOPMENT_HANDOFF.md` for the
-full phase-by-phase log and exact test results.
+Phase 7 (jobs pipeline) is complete. The next phase involves LLM orchestration engine (Phase 8), which startups/products enrichment depends on. See `docs/DEVELOPMENT_HANDOFF.md` for the full phase-by-phase log and exact test results.
