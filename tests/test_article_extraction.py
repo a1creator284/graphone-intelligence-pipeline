@@ -273,6 +273,14 @@ def test_content_at_exactly_max_length_is_not_truncated(monkeypatch):
         "<html>" + ("<div>" * 5000) + "deeply nested but no real content" + ("</div>" * 5000) + "</html>",
         "\x00\x01\x02binary-ish garbage\xff\xfe",
     ],
+    ids=[
+        "unclosed_tags",
+        "not_even_html",
+        "empty_string",
+        "whitespace_only",
+        "deeply_nested_divs",
+        "binary_garbage",
+    ],
 )
 def test_malformed_html_never_raises(malformed_html):
     # Real (unmocked) trafilatura + newspaper3k must not propagate an
