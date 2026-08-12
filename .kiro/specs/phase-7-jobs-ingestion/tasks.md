@@ -28,13 +28,13 @@ This document breaks down the implementation of Phase 7 (Jobs Ingestion) into in
   - [x] 4.3 Implement `JobPosting` JSON-LD extraction to parse `title`, `hiringOrganization.name`, `datePosted`.
   - [x] 4.4 Write mocked unit tests for XML Sitemap parsing and HTML JSON-LD extraction.
 
-- [ ] 5. Implement jobs pipeline orchestration
-  - [ ] 5.1 Wire all five adapters in `run_jobs_pipeline()`.
-  - [ ] 5.2 Implement provenance preservation: fetch payload, persist to `RawDocumentRepository`, and capture the returned `raw_document_id`.
-  - [ ] 5.3 Implement freshness filtering using existing `is_fresh()` utility on the `posted_at` field.
-  - [ ] 5.4 Implement integration of Validation (via `JobRecord` with `raw_document_id`) and Persistence (via `JobRepository`).
-  - [ ] 5.5 Ensure proper structured logging matches the Phase 6 patterns (`pipeline_start`, `validation_failed`, etc.).
-  - [ ] 5.6 Write an integration test for the full jobs pipeline with mocked adapters, explicitly asserting that `raw_document_id` is linked.
+- [x] 5. Implement jobs pipeline orchestration
+  - [x] 5.1 Wire all five adapters in `run_jobs_pipeline()`.
+  - [x] 5.2 Implement provenance preservation: fetch payload, persist to `RawDocumentRepository`, and capture the returned `raw_document_id`.
+  - [x] 5.3 Implement freshness filtering using existing `is_fresh()` utility on the `posted_at` field.
+  - [x] 5.4 Implement integration of Validation (via `JobRecord` with `raw_document_id`) and Persistence (via `JobRepository`).
+  - [x] 5.5 Ensure proper structured logging matches the Phase 6 patterns (`pipeline_start`, `validation_failed`, etc.).
+  - [x] 5.6 Write an integration test for the full jobs pipeline with mocked adapters, explicitly asserting that `raw_document_id` is linked.
 
 - [ ] 6. Final checkpoint & Verification
   - [ ] 6.1 Ensure the full test suite runs without live network dependencies (`pytest -q`).
