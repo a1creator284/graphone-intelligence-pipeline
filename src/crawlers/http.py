@@ -144,3 +144,79 @@ class AsyncHttpClient:
             max_delay=self._max_delay,
             retryable_exceptions=(RateLimitError, NetworkError, TimeoutErrorPipeline),
         )
+
+    async def post(self, url: str, *, headers: dict[str, str] | None = None, json: dict | None = None, retry: bool = False) -> FetchResult:
+        from src.errors import AuthenticationError, ParsingError
+        
+        async def _do_request() -> FetchResult:
+            async with self._semaphore:
+                try:
+                    response = await self._client.post(url, headers=headers, json=json)
+                except httpx.TimeoutException as exc:
+                    raise TimeoutErrorPipeline(f"Timed out posting {url}", context={"url": url}) from exc
+                except httpx.TransportError as exc:
+                    raise NetworkError(f"Network error posting {url}: {exc}", context={"url": url}) from exc
+
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
+                raise RateLimitError(
+                    f"429 from {url}",
+                    retry_after_seconds=float(retry_after) if retry_after else None,
+                    context={"url": url},
+                )
+            if response.status_code == 413:
+                raise PayloadTooLargeError(f"413 from {url}", context={"url": url})
+            if response.status_code == 403:
+                remaining = response.headers.get("X-RateLimit-Remaining") or response.headers.get("x-ratelimit-remaining")
+                reset = response.headers.get("X-RateLimit-Reset") or response.headers.get("x-ratelimit-reset")
+                if remaining == "0":
+                    retry_after = None
+                    if reset:
+                        import time
+                        retry_after = max(0.0, float(reset) - time.time())
+                    raise RateLimitError(
+                        f"403 rate-limit-exhausted from {url}",
+                        retry_after_seconds=retry_after,
+                        context={"url": url},
+                    )
+                raise AuthenticationError(
+                    f"403 from {url} -- treating as auth failure",
+                    context={"url": url, "status_code": response.status_code},
+                )
+            if response.status_code == 401:
+                raise AuthenticationError(
+                    f"401 from {url} -- treating as auth failure",
+                    context={"url": url, "status_code": response.status_code},
+                )
+            if response.status_code >= 500:
+                raise NetworkError(f"{response.status_code} server error from {url}", context={"url": url})
+
+            content_type = response.headers.get("content-type", "")
+            text = response.text
+            content_hash = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+
+            logger.info(
+                "post_complete",
+                url=url,
+                status=response.status_code,
+                content_type=content_type,
+                bytes=len(response.content),
+            )
+
+            return FetchResult(
+                url=url,
+                status_code=response.status_code,
+                text=text,
+                content_hash=content_hash,
+                headers=dict(response.headers),
+            )
+
+        if retry:
+            return await retry_async(
+                _do_request,
+                max_attempts=self._max_retries,
+                base_delay=self._base_delay,
+                max_delay=self._max_delay,
+                retryable_exceptions=(RateLimitError, NetworkError, TimeoutErrorPipeline),
+            )
+        return await _do_request()

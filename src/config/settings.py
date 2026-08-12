@@ -46,8 +46,11 @@ class Settings(BaseSettings):
 
     # ---- LLM providers ---------------------------------------------------
     gemini_api_key: str | None = None
+    gemini_model: str | None = None
     groq_api_key: str | None = None
+    groq_model: str | None = None
     deepseek_api_key: str | None = None
+    deepseek_model: str | None = None
 
     # Fallback order the orchestrator walks through. Configurable so a
     # provider outage doesn't require a code change.
