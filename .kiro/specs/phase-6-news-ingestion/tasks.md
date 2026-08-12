@@ -13,16 +13,16 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
 
 ## Tasks
 
-- [ ] 1. Set up news vertical infrastructure and base components
-  - [ ] 1.1 Create `src/pipeline/news.py` with `run_news_pipeline()` function matching research pipeline pattern
-  - [ ] 1.2 Add validation schema `NewsRecord` to `src/validation/schemas.py` with required fields (title, url, source_name, published_at, full_text_location)
-  - [ ] 1.3 Create `NewsRepository` in `src/storage/repositories.py` with upsert method using ON CONFLICT DO NOTHING
-  - [ ] 1.4 Update `src/main.py` CLI to handle `--vertical news` argument
-  - [ ] 1.5 Add Vertical.NEWS to `src/config/sources.py` enum
+- [x] 1. Set up news vertical infrastructure and base components
+  - [x] 1.1 Create `src/pipeline/news.py` with `run_news_pipeline()` function matching research pipeline pattern
+  - [x] 1.2 Add validation schema `NewsRecord` to `src/validation/schemas.py` with required fields (title, url, source_name, published_at, full_text_location)
+  - [x] 1.3 Create `NewsRepository` in `src/storage/repositories.py` with upsert method using ON CONFLICT DO NOTHING
+  - [x] 1.4 Update `src/main.py` CLI to handle `--vertical news` argument
+  - [x] 1.5 Add Vertical.NEWS to `src/config/sources.py` enum
   - _Requirements: 13.1, 13.2, 14.1, 14.2_
 
-- [ ] 2. Implement article text extraction component
-  - [ ] 2.1 Create `src/extraction/articles.py` with `ArticleExtractor` class
+- [x] 2. Implement article text extraction component
+  - [x] 2.1 Create `src/extraction/articles.py` with `ArticleExtractor` class
     - Implement `extract_text(html: str, source_url: str) -> str | None` using trafilatura as primary extraction library
     - Add fallback to newspaper3k when trafilatura returns None or empty string
     - Enforce minimum content length of 100 characters (reject shorter extractions)
@@ -30,7 +30,7 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Return None when both libraries fail or content is below minimum length
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 17.4, 17.5_
 
-  - [ ] 2.2 Write unit tests for article extraction (MANDATORY: validates assessment full-text extraction criteria)
+  - [x] 2.2 Write unit tests for article extraction (MANDATORY: validates assessment full-text extraction criteria)
     - Test successful extraction with trafilatura using mocked HTML fixture
     - Test fallback to newspaper3k when trafilatura fails
     - Test rejection of content below 100 characters
@@ -38,8 +38,8 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Test handling of malformed HTML gracefully
     - _Requirements: 2.3, 2.4, 16.1, 16.3_
 
-- [ ] 3. Implement freshness validation with clock skew tolerance
-  - [ ] 3.1 Create `src/validation/freshness.py` with `is_fresh()` function
+- [x] 3. Implement freshness validation with clock skew tolerance
+  - [x] 3.1 Create `src/validation/freshness.py` with `is_fresh()` function
     - Accept parameters: published_at, reference_time, window_hours (default 24), clock_skew_tolerance_seconds (default 60)
     - Return tuple of (is_fresh: bool, rejection_reason: str | None)
     - Accept timestamps within window: (reference_time - window_hours) <= published_at <= (reference_time + clock_skew_tolerance)
@@ -48,7 +48,7 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Add CLOCK_SKEW_TOLERANCE_SECONDS and FRESHNESS_WINDOW_HOURS to `src/config/settings.py`
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.10, 4.11_
 
-  - [ ] 3.2 Write unit tests for freshness validation (MANDATORY: validates assessment 24-hour freshness criteria)
+  - [x] 3.2 Write unit tests for freshness validation (MANDATORY: validates assessment 24-hour freshness criteria)
     - Test acceptance of articles within 24-hour window with frozen reference_time
     - Test rejection of stale articles beyond 24 hours
     - Test acceptance of articles within clock skew tolerance (e.g., 30 seconds ahead)
@@ -56,11 +56,11 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Test configurable window_hours and clock_skew_tolerance parameters
     - _Requirements: 4.1, 4.3, 4.4, 4.5, 16.6_
 
-- [ ] 4. Checkpoint - Ensure all tests pass
+- [x] 4. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Create base RSS news adapter class
-  - [ ] 5.1 Create `src/crawlers/news_base.py` with `RSSNewsAdapter` abstract class
+- [x] 5. Create base RSS news adapter class
+  - [x] 5.1 Create `src/crawlers/news_base.py` with `RSSNewsAdapter` abstract class
     - Inherit from `SourceAdapter` base class
     - Implement `discover()` method to fetch and parse RSS feed XML using feedparser
     - Extract title, link, pubDate, description from each RSS item
@@ -73,15 +73,15 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Store extracted text using deterministic content-addressable location: compute SHA-256 hash of extracted text, set full_text_location="local:sha256:{hash}", store in deterministic location for demo (migration-ready for S3/MinIO)
     - _Requirements: 12.8, 3.1, 3.2, 2.1, 2.4, 2.6, 11.6, 17.2, 17.3_
 
-  - [ ] 5.2 Write unit tests for RSS adapter base class (MANDATORY: validates assessment date extraction criteria)
+  - [x] 5.2 Write unit tests for RSS adapter base class (MANDATORY: validates assessment date extraction criteria)
     - Test RSS feed parsing with mocked XML fixture containing multiple articles
     - Test article URL discovery and metadata extraction from RSS items
     - Test date extraction priority: RSS pubDate as structured_value (highest priority)
     - Test rejection when full-text extraction fails (returns empty ParsedRecord list)
     - _Requirements: 16.1, 16.2, 16.5, 16.8_
 
-- [ ] 6. Implement HackerNews Algolia API adapter
-  - [ ] 6.1 Create `src/crawlers/hackernews.py` with `HackerNewsAIAdapter` class
+- [x] 6. Implement HackerNews Algolia API adapter
+  - [x] 6.1 Create `src/crawlers/hackernews.py` with `HackerNewsAIAdapter` class
     - Inherit from `SourceAdapter` base class
     - Set BASE_URL to "https://hn.algolia.com/api/v1/search_by_date"
     - Configure query params: tags=story, query with AI-related terms (artificial intelligence, machine learning, deep learning, neural network, LLM, GPT)
@@ -93,40 +93,40 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Set source_name to "hackernews_ai"
     - _Requirements: 12.1, 12.2, 12.3, 12.9, 12.10, 1.3, 1.4_
 
-  - [ ] 6.2 Write unit tests for HackerNews adapter (MANDATORY: validates assessment source adapter criteria)
+  - [x] 6.2 Write unit tests for HackerNews adapter (MANDATORY: validates assessment source adapter criteria)
     - Test Algolia API response parsing with mocked JSON fixture
     - Test AI-related query parameter construction
     - Test article URL extraction (not HN comments URL)
     - Test date extraction using HN created_at as structured_value
     - _Requirements: 16.2, 16.5, 16.9_
 
-- [ ] 7. Implement RSS-based news adapters for four sources
-  - [ ] 7.1 Create `src/crawlers/techcrunch.py` with `TechCrunchAIAdapter` class
+- [x] 7. Implement RSS-based news adapters for four sources
+  - [x] 7.1 Create `src/crawlers/techcrunch.py` with `TechCrunchAIAdapter` class
     - Inherit from `RSSNewsAdapter` base class
     - Set feed_url to "https://techcrunch.com/category/artificial-intelligence/feed/"
     - Set source_name to "techcrunch_ai_rss"
     - _Requirements: 12.4, 12.10_
 
-  - [ ] 7.2 Create `src/crawlers/theverge.py` with `TheVergeAIAdapter` class
+  - [x] 7.2 Create `src/crawlers/theverge.py` with `TheVergeAIAdapter` class
     - Inherit from `RSSNewsAdapter` base class
     - Set feed_url to "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
     - Set source_name to "theverge_ai_rss"
     - _Requirements: 12.5, 12.10_
 
-  - [ ] 7.3 Create `src/crawlers/mitreview.py` with `MITTechReviewAIAdapter` class
+  - [x] 7.3 Create `src/crawlers/mitreview.py` with `MITTechReviewAIAdapter` class
     - Inherit from `RSSNewsAdapter` base class
     - Set feed_url to "https://www.technologyreview.com/topic/artificial-intelligence/feed"
     - Set source_name to "mit_technology_review_ai_rss"
     - Add note that endpoint requires verification during deployment (sandbox has restricted egress)
     - _Requirements: 12.6, 12.10, 18.2, 18.3_
 
-  - [ ] 7.4 Create `src/crawlers/synced.py` with `SyncedReviewAdapter` class
+  - [x] 7.4 Create `src/crawlers/synced.py` with `SyncedReviewAdapter` class
     - Inherit from `RSSNewsAdapter` base class
     - Set feed_url to "https://syncedreview.com/feed/"
     - Set source_name to "synced_review_rss"
     - _Requirements: 12.7, 12.10_
 
-  - [ ] 7.5 Write unit tests for all four RSS adapters (MANDATORY: validates assessment source adapter criteria)
+  - [x] 7.5 Write unit tests for all four RSS adapters (MANDATORY: validates assessment source adapter criteria)
     - Test TechCrunch adapter with mocked RSS XML fixture (tests/fixtures/techcrunch_ai_sample.xml)
     - Test The Verge adapter with mocked RSS XML fixture (tests/fixtures/theverge_ai_sample.xml)
     - Test MIT Tech Review adapter with mocked RSS XML fixture (tests/fixtures/mitreview_ai_sample.xml)
@@ -134,11 +134,11 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Each test verifies: feed parsing, URL discovery, pubDate extraction, full-text extraction
     - _Requirements: 16.1, 16.2_
 
-- [ ] 8. Checkpoint - Ensure all tests pass
+- [x] 8. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 9. Implement news pipeline orchestration
-  - [ ] 9.1 Wire news adapters in news pipeline
+- [x] 9. Implement news pipeline orchestration
+  - [x] 9.1 Wire news adapters in news pipeline
     - Import all five adapter classes (HackerNewsAIAdapter, TechCrunchAIAdapter, TheVergeAIAdapter, MITTechReviewAIAdapter, SyncedReviewAdapter)
     - Create ADAPTER_CLASSES list with all five adapters
     - Instantiate each adapter with shared HTTP_Client
@@ -147,7 +147,7 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Aggregate RunStats across all five adapters
     - _Requirements: 1.1, 10.2, 10.6, 13.4_
 
-  - [ ] 9.2 Implement validation and persistence flow in news pipeline
+  - [x] 9.2 Implement validation and persistence flow in news pipeline
     - Capture reference_time at pipeline start using datetime.now(timezone.utc)
     - For each ParsedRecord: call validate_news_record() to create NewsRecord schema
     - For validated records: call is_fresh() to check 24-hour freshness window
@@ -157,7 +157,7 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Set collected_at to reference_time (not per-record fetch time)
     - _Requirements: 4.1, 4.2, 9.1, 9.2, 9.3, 9.4, 9.5, 7.1, 7.2, 7.5, 14.6, 15.9, 15.10, 15.11_
 
-  - [ ] 9.3 Add structured logging to news pipeline
+  - [x] 9.3 Add structured logging to news pipeline
     - Log pipeline_start with vertical, reference_time, target, max_concurrency, clock_skew_tolerance_seconds
     - Log fetch_complete for successful fetches with url, status, content_type, bytes
     - Log fetch_failed for network failures with url, error, error_type
@@ -168,14 +168,14 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Log pipeline_complete with aggregate stats: discovered, fetched, full_text_extracted, extraction_failed, validated, rejected_stale, rejected_future_dated, rejected_invalid, persisted, fetch_failed, blocked, duplicate_skipped, duration_seconds
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.11_
 
-  - [ ] 9.4 Write integration tests for news pipeline (MANDATORY: validates assessment pipeline resilience criteria)
+  - [x] 9.4 Write integration tests for news pipeline (MANDATORY: validates assessment pipeline resilience criteria)
     - Test end-to-end pipeline with all five mocked adapters
     - Test stats aggregation across multiple adapters (discovered, fetched, persisted)
     - Test mixed success and failure handling (some succeed, some fail, pipeline continues)
     - _Requirements: 16.1, 16.11_
 
-- [ ] 10. Implement error handling (NO independent retry loops - all retry logic stays in shared HTTP_Client)
-  - [ ] 10.1 Add BlockedSourceError and RateLimitError classification to news adapters
+- [x] 10. Implement error handling (NO independent retry loops - all retry logic stays in shared HTTP_Client)
+  - [x] 10.1 Add BlockedSourceError and RateLimitError classification to news adapters
     - Catch BlockedSourceError (403 without rate limit headers, 401) and log blocked source
     - Increment stats.blocked counter and continue processing other URLs
     - Catch RateLimitError (429, 403 with X-RateLimit-Remaining: 0) - shared HTTP_Client handles retry automatically
@@ -184,7 +184,7 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Adapters classify terminal errors and update pipeline statistics/logging only
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8_
 
-  - [ ] 10.2 Write unit tests for error handling (MANDATORY: validates assessment 429/413/403 behavior criteria)
+  - [x] 10.2 Write unit tests for error handling (MANDATORY: validates assessment 429/413/403 behavior criteria)
     - Test BlockedSourceError (403) logs blocked source and continues
     - Test RateLimitError (429) with Retry-After header - verify HTTP_Client handles retry (adapter does not retry independently)
     - Test 401 Unauthorized triggers BlockedSourceError (not retried)
@@ -192,8 +192,8 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Test fetch failures after max_retries log error and continue
     - _Requirements: 16.9, 16.10_
 
-- [ ] 11. Create test fixtures for all news sources
-  - [ ] 11.1 Create RSS XML fixtures for four RSS-based sources
+- [x] 11. Create test fixtures for all news sources
+  - [x] 11.1 Create RSS XML fixtures for four RSS-based sources
     - Create tests/fixtures/techcrunch_ai_sample.xml with realistic TechCrunch RSS 2.0 XML structure
     - Create tests/fixtures/theverge_ai_sample.xml with realistic The Verge RSS 2.0 XML structure
     - Create tests/fixtures/mitreview_ai_sample.xml with realistic MIT Tech Review RSS 2.0 XML structure
@@ -201,13 +201,13 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Each fixture should contain 3-5 article items with title, link, pubDate, description
     - _Requirements: 16.1, 16.2_
 
-  - [ ] 11.2 Create JSON fixture for HackerNews Algolia API
+  - [x] 11.2 Create JSON fixture for HackerNews Algolia API
     - Create tests/fixtures/hackernews_ai_sample.json with realistic Algolia API response structure
     - Include hits array with 3-5 story objects containing objectID, title, url, created_at
     - Include AI-related article titles and URLs
     - _Requirements: 16.2_
 
-  - [ ] 11.3 Create HTML article fixtures for extraction testing
+  - [x] 11.3 Create HTML article fixtures for extraction testing
     - Create tests/fixtures/sample_article_techcrunch.html with realistic article HTML structure
     - Create tests/fixtures/sample_article_verge.html with realistic article HTML structure
     - Create tests/fixtures/sample_article_mit.html with realistic article HTML structure
@@ -228,8 +228,8 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Test race condition handling: concurrent inserts return winner's row
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 16.7_
 
-- [ ] 13. Register news adapters in source configuration
-  - [ ] 13.1 Update src/config/sources.py to add all five news source adapters to SOURCE_REGISTRY
+- [x] 13. Register news adapters in source configuration
+  - [x] 13.1 Update src/config/sources.py to add all five news source adapters to SOURCE_REGISTRY
     - Register hackernews_ai, techcrunch_ai_rss, theverge_ai_rss, mit_technology_review_ai_rss, synced_review_rss
     - Set enabled=True for all five adapters
     - Set vertical=Vertical.NEWS for all five adapters
