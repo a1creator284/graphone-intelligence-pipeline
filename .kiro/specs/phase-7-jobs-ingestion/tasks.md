@@ -12,10 +12,10 @@ This document breaks down the implementation of Phase 7 (Jobs Ingestion) into in
   - [x] 1.4 Create `src/pipeline/jobs.py` with `run_jobs_pipeline()` function.
   - [x] 1.5 Update `src/main.py` CLI to route `--vertical jobs` to `run_jobs_pipeline()`.
 
-- [ ] 2. Implement JSON API adapters (RemoteOK and WorkingNomads)
-  - [ ] 2.1 Create `src/crawlers/remoteok.py` adapter. Map `position`, `company`, `url`, `date`.
-  - [ ] 2.2 Create `src/crawlers/workingnomads.py` adapter. Map `title`, `company_name`, `url`, `pub_date`.
-  - [ ] 2.3 Write mocked unit tests for both JSON API adapters (validates successful parsing and date extraction).
+- [x] 2. Implement JSON API adapters (RemoteOK and WorkingNomads)
+  - [x] 2.1 Create `src/crawlers/remoteok.py` adapter. Map `position`, `company`, `url`, `date`.
+  - [x] 2.2 Create `src/crawlers/workingnomads.py` adapter. Map `title`, `company_name`, `url`, `pub_date`.
+  - [x] 2.3 Write mocked unit tests for both JSON API adapters (validates successful parsing and date extraction).
 
 - [ ] 3. Implement YCombinator Ask HN Adapter
   - [ ] 3.1 Create `src/crawlers/ycombinator_jobs.py` adapter utilizing Algolia search for "Ask HN: Who is hiring?".
