@@ -160,6 +160,25 @@ python -m src.main --vertical news --dry-run                        # reports re
 6. `ResearchPaperRepository` — idempotent `INSERT ... ON CONFLICT DO
    NOTHING` on `paper_url`, globally unique across both source adapters.
 
+## News pipeline (Phase 6)
+
+`python -m src.main --vertical news --target 1000 --workers 50` orchestrates high-fidelity AI news ingestion across five sources:
+
+1. `HackerNewsAIAdapter` — Algolia API filtered for AI-related queries.
+2. `TechCrunchAIAdapter` — TechCrunch AI RSS feed.
+3. `TheVergeAIAdapter` — The Verge AI RSS feed.
+4. `MITTechReviewAIAdapter` — MIT Technology Review AI RSS feed.
+5. `SyncedReviewAdapter` — Synced Review RSS feed.
+
+**Key Features:**
+- **Anti-Hallucination Guarantees:** Missing data results in rejection, never fabrication. If full-text extraction fails or critical metadata is absent, the record is discarded (`extraction_failed` or `invalid_records`).
+- **Freshness Filtering:** Implements strict 24-hour window validation (`is_fresh`) using `Date_Engine`, with a configurable clock skew tolerance to handle minor server clock drift (e.g., rejecting future-dated articles).
+- **Full-Text Extraction Requirement:** Uses `trafilatura` (with `newspaper3k` fallback) to extract article text. Enforces a minimum of 100 characters, automatically rejecting stub articles.
+- **Deduplication Strategy:** Implements URL-based per-source deduplication for news records (unlike global URL deduplication for research), and content-hash deduplication for raw document provenance.
+- **Content-Addressable Storage:** Deterministic SHA-256 hash-based local storage for full-text, ensuring the system is migration-ready for S3/MinIO.
+
+**Environment Note:** The news endpoints are unreachable from the initial restricted sandbox environment (egress restricted to pypi, npmjs, github). Adapters will be verified against live sources post-deployment.
+
 ## Date engine and freshness (Phase 5)
 
 `src/extraction/dates.py` implements the full priority chain from Section

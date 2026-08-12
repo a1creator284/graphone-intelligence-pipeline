@@ -251,15 +251,15 @@ This implementation extends the GraphOne Intelligence Pipeline with a production
     - Verify database tables are created before ingestion
     - _Requirements: 13.1, 13.2, 13.3, 13.5, 13.6_
 
-- [ ] 15. Final checkpoint - Ensure all tests pass
-  - Run full test suite with pytest
-  - Verify minimum 40 meaningful Phase 6 tests with all critical behaviors covered (target approximately 45-50 tests)
-  - Verify all tests use mocked fixtures (no live network dependencies)
-  - Ensure coverage for all five news source adapters
-  - Ensure all tests pass, ask the user if questions arise.
+- [x] 15. Final checkpoint - Ensure all tests pass
+  - [x] Run full test suite with pytest
+  - [x] Verify minimum 40 meaningful Phase 6 tests with all critical behaviors covered (target approximately 45-50 tests)
+  - [x] Verify all tests use mocked fixtures (no live network dependencies)
+  - [x] Ensure coverage for all five news source adapters
+  - [x] Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 16. Add README documentation for news vertical
-  - [ ] 16.1 Document news vertical usage and architecture
+- [x] 16. Add README documentation for news vertical
+  - [x] 16.1 Document news vertical usage and architecture
     - Document usage: `python -m src.main --vertical news --target 1000 --workers 50`
     - Document five news sources with endpoints and descriptions
     - Document anti-hallucination guarantees (missing data → rejection, never fabrication)
