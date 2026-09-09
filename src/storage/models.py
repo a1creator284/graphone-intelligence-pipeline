@@ -246,20 +246,48 @@ class Startup(Base):
 
 
 class Product(Base):
+    """An AI product as published by a source.
+
+    `startup_name` is the *vendor/publisher* (kept under its original name so
+    the six-tab export contract does not change); `product_name` is the
+    product itself. Both come verbatim from the source -- see the products
+    adapters for the exact field mapping.
+
+    Two DB-level uniqueness guarantees, not application-only checks:
+
+    * ``uq_products_source_url``  -- one row per (source, canonical URL). This
+      is what keeps two genuinely different products with similar names apart:
+      their source URLs differ, so both survive.
+    * ``uq_products_dedup_key``   -- one row per real-world artifact *across*
+      sources. The key is derived from the source's own identifier (e.g. a
+      Hugging Face repo id), so the same model listed by two sources collapses
+      deterministically instead of being counted twice.
+    """
+
     __tablename__ = "products"
 
     id: Mapped[uuid.UUID] = uuid_pk()
+    product_name: Mapped[str | None] = mapped_column(String(250), nullable=True)
     startup_name: Mapped[str] = mapped_column(String(250), nullable=False)
     canonical_entity_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("canonical_entities.id"), nullable=True)
     source_name: Mapped[str] = mapped_column(String(120), nullable=False)
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_external_id: Mapped[str | None] = mapped_column(String(250), nullable=True)
+    # Deterministic cross-source identity key (see class docstring).
+    dedup_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
     pricing_model: Mapped[str | None] = mapped_column(
         Enum("FREE", "FREEMIUM", "PAID", "ENTERPRISE", name="pricing_model_enum"), nullable=True
     )
+    # Only fields the source actually published; never derived or estimated.
+    metadata_json: Mapped[dict] = mapped_column(PortableJSONB(), default=dict)
     raw_document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("raw_documents.id"), nullable=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    __table_args__ = (UniqueConstraint("source_name", "source_url", name="uq_products_source_url"),)
+    __table_args__ = (
+        UniqueConstraint("source_name", "source_url", name="uq_products_source_url"),
+        UniqueConstraint("dedup_key", name="uq_products_dedup_key"),
+        Index("ix_products_source_name", "source_name"),
+    )
 
 
 class ResearchPaper(Base):

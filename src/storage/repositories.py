@@ -14,7 +14,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.storage.models import EntityMappingLog, Job, News, ProcessingError, RawDocument, ResearchPaper, Startup
+from src.storage.models import (
+    EntityMappingLog,
+    Job,
+    News,
+    ProcessingError,
+    Product,
+    RawDocument,
+    ResearchPaper,
+    Startup,
+)
 
 
 def _insert_for(session: AsyncSession):
@@ -119,6 +128,43 @@ class StartupRepository:
         result = await self.session.execute(stmt)
         await self.session.commit()
         return result.rowcount > 0
+
+
+class ProductRepository:
+    """Idempotent product persistence.
+
+    Two DB-level guards, applied in order:
+
+    1. ``dedup_key`` -- the cross-source artifact key. A conflict here means
+       another source already contributed the same real-world product, so the
+       insert is a no-op (deterministic: whichever source ran first wins, and
+       the source order is fixed).
+    2. ``(source_name, source_url)`` -- the per-source identity/provenance
+       key. Distinct products with similar names have distinct URLs and both
+       survive.
+
+    Neither guard is a fuzzy/name comparison, so a name collision can never
+    silently drop a genuinely different product.
+    """
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def upsert(self, **fields) -> bool:
+        insert_ = _insert_for(self.session)
+        # No index_elements: bare ON CONFLICT DO NOTHING covers *both* unique
+        # constraints. Targeting only one of them would let the other raise
+        # IntegrityError instead of deduplicating.
+        stmt = insert_(Product).values(**fields).on_conflict_do_nothing()
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+        return result.rowcount > 0
+
+    async def exists(self, source_name: str, source_url: str) -> bool:
+        stmt = select(Product.id).where(
+            Product.source_name == source_name, Product.source_url == source_url
+        )
+        return (await self.session.execute(stmt)).first() is not None
 
 
 class EntityMappingLogRepository:
