@@ -3,22 +3,102 @@
 Operational checkpoint for resuming work on the GraphOne / FrontierAtlas
 intelligence pipeline. Keep this file short and factual.
 
-**Last updated:** 2026-09-09 (session 3)
+**Last updated:** 2026-09-09 (session 4)
 **Branch:** `phase-8-repair`
 **Repo:** https://github.com/a1creator284/graphone-intelligence-pipeline
 
 ## Current Status
 
 Phases 1-8 plus Phase 12 (entity resolution) **plus the OpenAlex research
-source** are implemented and green: **315 passed, 2 deselected** (the 2
+source** are implemented and green: **321 passed, 2 deselected** (the 2
 deselected are `-m integration`, live-network, opt-in). Baseline at session
-start was 286; this session added 29 tests and broke none.
+start was 315; session 4 added 6 tests and broke none.
 
-This session implemented exactly one milestone: replacing the dead Papers
-With Code research source with OpenAlex, plus a fill-forward fix to the
-research target allocation.
+**Session 4 did exactly one thing: fixed the CLI/process-exit hang
+(previously Known Issue #1). It is resolved — see below.**
+
+Session 3 implemented one milestone: replacing the dead Papers With Code
+research source with OpenAlex, plus a fill-forward fix to the research
+target allocation.
 
 ## What This Session Did
+
+### Session 4 — CLI/process-exit hang fixed (one task only)
+
+**Symptom.** `python -m src.main --vertical research` finished its work and
+logged its summary, then the process never exited (`timeout` → exit 124).
+Reproduced on the pre-OpenAlex baseline, so it was pre-existing.
+
+**Root cause (measured, not guessed).** `init_engine()` creates a
+*process-global* `AsyncEngine`, and `src/main.py` never disposed it. The
+undisposed pool keeps its connections checked out, and under aiosqlite the
+pool owns a **non-daemon** `_connection_worker_thread`. A non-daemon thread
+blocks interpreter shutdown after `asyncio.run()` returns. Confirmed by
+enumerating live threads after `asyncio.run()`:
+`[('Thread-1 (_connection_worker_thread)', daemon=False)]`.
+
+**Fix — at the engine-ownership boundary, in `src/storage/database.py`:**
+- `dispose_engine()` — awaits `engine.dispose()` and clears the
+  `_engine` / `_session_factory` globals. Idempotent; a no-op if no engine
+  was ever created.
+- `engine_scope(database_url=None)` — async context manager that owns the
+  engine for the duration of a run and disposes it in a `finally`, so the
+  pool is released on the failure path too.
+- `src/main.py`: `_run_research` / `_run_news` / `_run_jobs` now acquire
+  their engine via `async with engine_scope() as engine:` instead of a bare
+  `init_engine()` they never tore down. `main()` is unchanged.
+
+`AsyncHttpClient` was already correctly closed by `async with` inside
+`run_research_pipeline`; it was **not** the leak, and was left alone.
+
+**No** timeouts, `sys.exit` hacks, daemon-thread tricks, or swallowed
+exceptions were used. Nothing else was refactored.
+
+### Verification
+
+```
+# before
+$ DATABASE_URL="sqlite+aiosqlite:///:memory:" timeout 45 \
+    python -m src.main --vertical research --target 1
+EXIT=124        (work done in ~2s, then hung until killed)
+
+# after
+EXIT=0          real 0m1.4s
+```
+
+Live research run, both sources, still correct and now self-terminating:
+
+```
+$ DATABASE_URL="sqlite+aiosqlite:///:memory:" OPENALEX_MAILTO=... \
+    python -m src.main --vertical research --target 6
+valid_records: 6  duplicates: 0  rejected: 0
+by_source: {"arxiv": 3, "openalex": 3}
+CLI_EXIT=0      real 0m1.7s
+```
+
+### Session 4 files changed
+
+- `src/storage/database.py` — added `dispose_engine()`, `engine_scope()`
+- `src/main.py` — three vertical runners use `engine_scope()`
+- `tests/test_cli_lifecycle.py` — **new**, 6 regression tests: pool worker
+  thread is retired when the scope exits; pool is still disposed when the
+  run body raises (and the error propagates); globals are reset; second
+  `dispose_engine()` call is safe; a source guard so a future edit can't
+  reintroduce a bare `init_engine()` in the CLI; and an end-to-end
+  `subprocess` test that the CLI process terminates on its own.
+- `tests/test_cli_integration.py` — the news test patched
+  `src.main.init_engine`; it now patches `src.main.engine_scope` with a
+  dummy async context manager. Every original assertion is unchanged.
+
+```
+$ .venv/bin/python -m pytest tests/test_cli_lifecycle.py tests/test_cli_integration.py -q
+7 passed
+
+$ .venv/bin/python -m pytest -q
+321 passed, 2 deselected, 31 warnings in 7.31s
+```
+
+## What Session 3 Did
 
 ### Milestone: OpenAlex replaces Papers With Code
 
@@ -139,13 +219,13 @@ once the target is met).
 
 ## Known Issues
 
-1. **`python -m src.main` does not exit cleanly after a run.** The pipeline
-   completes and logs its summary, then the process hangs until killed.
-   **This is pre-existing, not caused by this change** — verified by
-   `git stash`ing the working tree and reproducing the identical hang on
-   the previous commit (`baseline_exit=124` under `timeout 60`). Likely the
-   async engine/connection pool is never disposed in `src/main.py`. Worth
-   a small dedicated fix.
+1. ~~**`python -m src.main` does not exit cleanly after a run.**~~
+   **FIXED in session 4** — the global async engine is now disposed via
+   `engine_scope()`. The CLI exits 0 on its own. Remaining caveat: any
+   *future* entrypoint (a script, worker, or new vertical) that calls
+   `init_engine()` directly will reintroduce the same hang — use
+   `engine_scope()`, or pair `init_engine()` with `dispose_engine()`. The
+   source guard in `tests/test_cli_lifecycle.py` covers `src/main.py` only.
 2. **OpenAlex `publication_date` is a date only** (no time) and is
    occasionally a publisher-supplied *future* date (the captured fixture
    contains 2045-12-10 and 2041-01-01 — those are genuinely what the API
@@ -211,7 +291,8 @@ research_pipeline_complete: target=6 discovered=2 valid_records=6
 ```
 
 Target met exactly, from both sources, with no fabricated rows. (The process
-then hung on exit — see Known Issue #1, pre-existing.)
+hung on exit at the time; that hang is **fixed as of session 4** and the same
+command now exits 0 — see "Session 4" above.)
 
 ## Remaining Assessment Gaps
 
@@ -237,6 +318,8 @@ then hung on exit — see Known Issue #1, pre-existing.)
 ## Next Task
 
 **Phase 14: the six-tab export module** (`src/export/`, requirement #13).
+(The CLI exit hang that session 3 flagged as a prerequisite is now fixed, so
+a long 1,000-paper run will terminate cleanly.)
 
 It is the largest remaining unmet requirement, it is fully self-contained,
 it needs no network access, and all six backing tables already exist and are
@@ -304,16 +387,16 @@ cd /home/user/webapp
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# Confirm the baseline is still green (expect: 315 passed, 2 deselected)
+# Confirm the baseline is still green (expect: 321 passed, 2 deselected)
 .venv/bin/python -m pytest -q
 
 # Re-probe the live research sources
 curl -s -o /dev/null -w "openalex: %{http_code}\n" \
   "https://api.openalex.org/works?filter=concepts.id:C154945302&per-page=2"
 
-# Live smoke test (NB: the process will not exit on its own -- Known Issue #1)
+# Live smoke test (exits cleanly now -- the old non-exit bug is fixed)
 DATABASE_URL="sqlite+aiosqlite:///:memory:" OPENALEX_MAILTO="you@example.com" \
-  timeout 60 .venv/bin/python -m src.main --vertical research --target 6
+  .venv/bin/python -m src.main --vertical research --target 6
 
 # Then start the next task: src/export/ (six-tab export, requirement #13)
 ```

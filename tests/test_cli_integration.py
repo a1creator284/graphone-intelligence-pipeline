@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import asynccontextmanager
 from unittest.mock import patch
 
 import pytest
@@ -93,7 +94,7 @@ async def test_cli_news_vertical_integration(capsys, db_session):
             from src.main import _run, build_parser
             
             # We must also mock the database initialization in main to use the test session
-            with patch("src.main.init_engine") as mock_init_engine, \
+            with patch("src.main.engine_scope") as mock_engine_scope, \
                  patch("src.storage.database.get_session_factory") as mock_get_session_factory:
                 
                 # We need a dummy engine with a begin() context manager
@@ -109,7 +110,13 @@ async def test_cli_news_vertical_integration(capsys, db_session):
                                 pass
                         return DummyContextManager()
                         
-                mock_init_engine.return_value = DummyEngine()
+                # `_run_news` now acquires its engine through `engine_scope`,
+                # which owns disposal of the pool (see test_cli_lifecycle.py).
+                @asynccontextmanager
+                async def dummy_engine_scope(database_url=None):
+                    yield DummyEngine()
+
+                mock_engine_scope.side_effect = dummy_engine_scope
                 
                 class DummyFactory:
                     def __call__(self):
