@@ -23,6 +23,7 @@ from src.crawlers.wellfound import WellfoundAIAdapter
 from src.crawlers.workingnomads import WorkingNomadsAIAdapter
 from src.crawlers.ycombinator_jobs import YCombinatorWhoIsHiringAdapter
 from src.pipeline.workers import run_adapter
+from src.resolution import EntityResolver
 from src.storage.repositories import JobRepository, ProcessingErrorRepository, RawDocumentRepository
 from src.validation.freshness import is_fresh
 from src.validation.schemas import validate_job_record
@@ -53,6 +54,10 @@ class JobsPipelineResult:
     invalid_records: int = 0
     fetch_failed: int = 0
     blocked: int = 0
+    entities_resolved: int = 0
+    entities_created: int = 0
+    entities_unresolved: int = 0
+    entity_methods: dict[str, int] = field(default_factory=dict)
     rejection_reasons: list[str] = field(default_factory=list)
     by_source: dict[str, int] = field(default_factory=dict)
 
@@ -76,6 +81,9 @@ async def run_jobs_pipeline(
     job_repo = JobRepository(session)
     raw_doc_repo = RawDocumentRepository(session)
     error_repo = ProcessingErrorRepository(session)
+    # Entity resolution (Section 22): every job's employer name is mapped to
+    # a canonical entity and the decision is written to entity_mapping_log.
+    resolver = EntityResolver(session)
 
     logger.info(
         "pipeline_start",
@@ -231,6 +239,29 @@ async def run_jobs_pipeline(
             payload["raw_document_id"] = raw_document_id
             payload["collected_at"] = reference_time
 
+            # Resolve the employer onto a canonical entity. A failure here is
+            # never fatal and never fabricates a link -- the job is persisted
+            # with a null canonical_entity_id instead.
+            try:
+                resolution = await resolver.resolve(validated.company, source_url=record.source_url)
+                payload["canonical_entity_id"] = resolution.canonical_entity_id
+                result.entity_methods[resolution.method] = result.entity_methods.get(resolution.method, 0) + 1
+                if resolution.resolved:
+                    result.entities_resolved += 1
+                    if resolution.created:
+                        result.entities_created += 1
+                else:
+                    result.entities_unresolved += 1
+            except Exception as exc:  # noqa: BLE001 - resolution must not break ingestion
+                payload["canonical_entity_id"] = None
+                result.entities_unresolved += 1
+                logger.warning(
+                    "entity_resolution_failed",
+                    url=record.source_url,
+                    source=record.source_name,
+                    error=str(exc),
+                )
+
             try:
                 inserted = await job_repo.upsert(**payload)
                 if inserted:
@@ -281,6 +312,10 @@ async def run_jobs_pipeline(
         blocked=result.blocked,
         duplicate_skipped=result.duplicates,
         by_source=result.by_source,
+        entities_resolved=result.entities_resolved,
+        entities_created=result.entities_created,
+        entities_unresolved=result.entities_unresolved,
+        entity_methods=result.entity_methods,
     )
 
     return result

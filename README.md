@@ -7,8 +7,8 @@ assessment.
 ## Project status (honest, not aspirational)
 
 This repo is being built in phases (see `docs/DEVELOPMENT_HANDOFF.md` for the
-full phase-by-phase log). **Phases 1-8 are implemented and test-verified as
-of this commit (249 passing tests):**
+full phase-by-phase log). **Phases 1-8 plus Phase 12 (entity resolution) are
+implemented and test-verified as of this commit (286 passing tests):**
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -20,7 +20,9 @@ of this commit (249 passing tests):**
 | 6 | News pipeline: 5 API/RSS sources, validation, freshness filtering | ✅ Done |
 | 7 | Jobs pipeline: 5 API/Sitemap sources, JSON-LD, validation, provenance | ✅ Done |
 | 8 | LLM orchestration: 3 providers, fallback, chunking, 413 handling, metrics | ✅ Done |
-| 9-16 | Startups, products, entity resolution, quality metrics, export, audit | ⏳ Not yet built |
+| 12 | Entity resolution: normalization, aliases, fuzzy matching, mapping log | ✅ Done |
+| 9-11 | Startups + products pipelines | ⏳ Not yet built |
+| 13-16 | Quality metrics, six-tab export, architecture.pdf, final audit | ⏳ Not yet built |
 
 `python -m src.main --vertical research` and `--vertical news` **actually run**
 end-to-end (discovery → extraction/enrichment → schema validation →
@@ -309,6 +311,53 @@ timestamps.
 - All of this is enforced by `retry_async`, which every network and (later)
   LLM call routes through, so retry semantics are consistent everywhere.
 
+## Entity resolution / deduplication (Phase 12)
+
+`src/resolution/` maps the same real-world company, however each source
+spells it, onto one stable `canonical_entities` row — and records **every**
+decision in `entity_mapping_log`, which is the backing table for the
+required "Entity Mapping Log" export tab.
+
+The resolution ladder runs cheapest-and-most-certain first:
+
+| Method | Confidence | Trigger |
+|---|---|---|
+| `normalized_exact` | 1.00 | normalized key matches a canonical key |
+| `alias` | 0.99 | normalized key is an already-registered alias |
+| `fuzzy` | score/100 | `rapidfuzz` token_sort_ratio ≥ 92 |
+| `created` | 1.00 | no match — genuinely a new entity |
+| `unresolved` | 0.00 | name carries no usable signal |
+
+Normalization (`src/resolution/normalize.py`) is pure and deterministic:
+NFKD accent folding, casefolding, punctuation → space, then *trailing*
+legal-suffix stripping from a fixed list. `"OpenAI, Inc."`, `"OpenAI"` and
+`"  openai  "` all collapse to `openai`, while `"Incredible AI"` keeps its
+`Inc` because only trailing tokens are stripped.
+
+Two anti-fabrication guarantees matter here:
+
+- **A false merge is worse than a false split.** The fuzzy threshold is
+  deliberately high (92). Near-misses in the 85–92 band are *not* merged;
+  they become separate entities and the near-miss is logged as a review
+  candidate. A wrong split is visible in the mapping log and recoverable; a
+  wrong merge silently corrupts the dataset.
+- **Names are never invented.** An unusable name (empty, punctuation-only,
+  single character) resolves to `unresolved` with a null
+  `canonical_entity_id` and confidence 0.0 — still audited, never
+  substituted with a placeholder.
+
+Wired into the jobs pipeline today (`canonical_entity_id` is stamped on every
+persisted `Job`); resolution failure is caught and degrades to a null link
+rather than dropping the record. `Startup` and `Product` carry the same FK
+column and will call the identical resolver when Phases 9-11 land.
+
+At 500k+ records only the candidate index changes: swap the in-process
+dict/`extractOne` scan for a `pg_trgm` GIN index or a shared Redis set. The
+`EntityResolver.resolve()` signature and the log schema stay identical.
+
+See `tests/test_entity_normalization.py`, `tests/test_entity_resolver.py`,
+and `tests/test_jobs_entity_resolution.py` (37 tests).
+
 ## Deduplication
 
 Enforced at the database level via unique constraints (Section 28), not
@@ -338,17 +387,21 @@ does not retry or attempt to defeat the block.
 
 ## Next phases
 
-Phase 8 (LLM orchestration) is complete. Immediate priorities, in order:
+Phases 8 (LLM orchestration) and 12 (entity resolution) are complete.
+Immediate priorities, in order:
 
 1. **Replace the dead Papers With Code source** — it now redirects to
-   HuggingFace and returns HTML. Swap in HuggingFace Papers or Semantic
-   Scholar behind the existing adapter interface.
-2. **Phase 9-11** — startups and products pipelines, which are the first
-   real consumers of the Phase 8 LLM orchestrator.
-3. **Phase 12** — entity resolution (normalization, aliases, fuzzy matching,
-   mapping log).
-4. **Phase 13-16** — quality/metrics layer, CSV/XLSX/Google Sheets export,
-   architecture documentation, and the final requirement-matrix audit.
+   HuggingFace and returns HTML. OpenAlex (`api.openalex.org`, verified
+   HTTP 200, no key required) is the leading candidate; Semantic Scholar
+   currently rate-limits unauthenticated traffic (HTTP 429).
+2. **Phases 9-11: startups + products pipelines.** Note the YC Algolia
+   endpoint returns HTTP 403 and Product Hunt's GraphQL API requires an
+   OAuth token — source access must be re-verified before these are built.
+3. **Phase 14: six-tab export.** Five of the six tabs already have backing
+   tables; the Entity Mapping Log tab is now populated by Phase 12.
+4. **Phases 13, 15, 16** — quality/metrics layer, architecture
+   documentation (`architecture.pdf`), and the final requirement-matrix
+   audit.
 
 See `docs/DEVELOPMENT_HANDOFF.md` for the full phase-by-phase log and
 `CLAUDE_HANDOFF.md` for the current session checkpoint and exact next task.
