@@ -191,17 +191,21 @@ class YCombinatorStartupsAdapter(SourceAdapter):
         if not batch_counts:
             # Unpartitioned fallback: bounded by Algolia's hard per-query cap
             # so we never issue a page request the API would reject.
-            emitted = 0
-            page = 0
             capped = min(wanted, MAX_HITS_PER_QUERY)
-            while emitted < capped:
-                hits_per_page = min(self.page_size, capped - emitted)
+            pages = math.ceil(capped / self.page_size)
+            for page in range(pages):
+                # hitsPerPage is held constant so Algolia's offset
+                # (page * hitsPerPage) keeps advancing -- see the partitioned
+                # branch below for why shrinking it re-reads earlier hits.
                 yield DiscoveredUrl(
-                    url=self._query_url(page=page, hits_per_page=hits_per_page),
-                    metadata={"page": page, "hits_per_page": hits_per_page, "batch": None},
+                    url=self._query_url(page=page, hits_per_page=self.page_size),
+                    metadata={
+                        "page": page,
+                        "hits_per_page": self.page_size,
+                        "batch": None,
+                        "max_records": min(self.page_size, capped - page * self.page_size),
+                    },
                 )
-                emitted += hits_per_page
-                page += 1
             return
 
         # Deterministic partition order: largest batches first, name as the
@@ -213,12 +217,34 @@ class YCombinatorStartupsAdapter(SourceAdapter):
                 break
             available = min(count, MAX_HITS_PER_QUERY)
             take = min(available, wanted - emitted)
-            pages = math.ceil(take / self.page_size)
+            # With a uniform page size, the last page's window is
+            # `page * page_size + page_size`; keep that within Algolia's
+            # retrievable-hit ceiling rather than issuing a query it rejects.
+            pages = min(
+                math.ceil(take / self.page_size),
+                MAX_HITS_PER_QUERY // self.page_size,
+            )
             for page in range(pages):
-                hits_per_page = min(self.page_size, take - page * self.page_size)
+                # `hitsPerPage` MUST stay constant across the pages of a
+                # partition: Algolia derives the offset as
+                # `page * hitsPerPage`, so shrinking it on the final page
+                # slides the window *backwards* and re-serves companies
+                # already seen on the previous page (e.g. 100 then 62 over a
+                # 162-hit batch re-reads hits 62-99). Those re-reads then
+                # collapse on the (source_name, source_url) unique key and
+                # were being counted as "duplicates", starving the target.
+                # The target ceiling is honoured by `max_records` instead,
+                # which trims the final page during parse.
                 yield DiscoveredUrl(
-                    url=self._query_url(page=page, hits_per_page=hits_per_page, batch=batch),
-                    metadata={"page": page, "hits_per_page": hits_per_page, "batch": batch},
+                    url=self._query_url(
+                        page=page, hits_per_page=self.page_size, batch=batch
+                    ),
+                    metadata={
+                        "page": page,
+                        "hits_per_page": self.page_size,
+                        "batch": batch,
+                        "max_records": min(self.page_size, take - page * self.page_size),
+                    },
                 )
             emitted += take
 
@@ -254,9 +280,18 @@ class YCombinatorStartupsAdapter(SourceAdapter):
         if not isinstance(hits, list):
             raise ParsingError("YC Algolia 'hits' is not a list", context={"url": fetch_result.url})
 
+        # Discovery keeps `hitsPerPage` uniform so Algolia's offset stays
+        # correct, and asks here for the slice of the final page that is
+        # actually still wanted. Trimming real hits we did not ask for keeps
+        # the target a ceiling; it never pads.
+        max_records = discovered.metadata.get("max_records")
+        limit = max_records if isinstance(max_records, int) and max_records >= 0 else None
+
         records: list[ParsedRecord] = []
         seen_urls: set[str] = set()
         for hit in hits:
+            if limit is not None and len(records) >= limit:
+                break
             if not isinstance(hit, dict):
                 continue
             record = self._parse_company(hit, fetch_result)
