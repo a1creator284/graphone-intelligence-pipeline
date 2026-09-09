@@ -367,7 +367,10 @@ async def test_discovery_requests_no_more_than_the_target():
     adapter = _adapter(client, max_results=250, page_size=100)
     discovered = await _collect(adapter)
 
-    assert sum(d.metadata["hits_per_page"] for d in discovered) == 250
+    # `hits_per_page` is deliberately uniform (Algolia's offset is
+    # page * hitsPerPage), so the target ceiling is carried by `max_records`,
+    # which trims the final page at parse time.
+    assert sum(d.metadata["max_records"] for d in discovered) == 250
 
 
 @pytest.mark.asyncio
@@ -389,13 +392,18 @@ async def test_partitioning_lets_the_target_exceed_the_1000_hit_query_cap():
     adapter = _adapter(client, max_results=1500, page_size=100)
     discovered = await _collect(adapter)
 
-    total = sum(d.metadata["hits_per_page"] for d in discovered)
+    total = sum(d.metadata["max_records"] for d in discovered)
     assert total == 1500
     assert total > MAX_HITS_PER_QUERY
-    # No single partitioned query may ask beyond the per-query cap.
+    # No single partitioned query may reach beyond the per-query cap. With a
+    # uniform page size the deepest window is page * page_size + page_size.
     for batch in {d.metadata["batch"] for d in discovered}:
         in_batch = [d for d in discovered if d.metadata["batch"] == batch]
-        assert sum(d.metadata["hits_per_page"] for d in in_batch) <= MAX_HITS_PER_QUERY
+        deepest = max(
+            d.metadata["page"] * d.metadata["hits_per_page"] + d.metadata["hits_per_page"]
+            for d in in_batch
+        )
+        assert deepest <= MAX_HITS_PER_QUERY
 
 
 @pytest.mark.asyncio
@@ -482,3 +490,212 @@ def test_registry_entry_matches_the_adapter():
     entry = next(s for s in SOURCE_REGISTRY if s.name == YCombinatorStartupsAdapter.name)
     assert entry.vertical == Vertical.STARTUPS
     assert entry.enabled
+
+
+# ---------------------------------------------------------------------------
+# Regression: pagination offset must not re-serve companies as "duplicates"
+#
+# Algolia derives a query's offset from `page * hitsPerPage`. Discovery used
+# to SHRINK hitsPerPage on a partition's final page to avoid overshooting the
+# target, which slid the offset backwards and re-served hits already returned
+# by the previous page. Live example (2026-09-09): batch "Summer 2024" has 162
+# tagged hits, so discovery asked for page 0 @ hitsPerPage=100 (offset 0) then
+# page 1 @ hitsPerPage=62 (offset 62) -- re-reading hits 62-99. Those 38
+# re-reads collapsed on the (source_name, source_url) unique key and were
+# counted as duplicates. Summed over the six multi-page batches in a 1,000
+# record run that is 200 phantom duplicates, which is why a 1,000-record
+# target persisted only ~800 rows.
+#
+# The companies were always DISTINCT and REAL -- entity resolution was never
+# at fault, and the fix does not touch dedup identity or any threshold.
+# ---------------------------------------------------------------------------
+
+
+class _OffsetAccurateAlgoliaStub:
+    """Serves a synthetic index the way Algolia really pages it.
+
+    The hit *shape* comes from the captured live fixture; only the slug/name
+    identity is generated so a batch large enough to need several pages can be
+    simulated deterministically. Crucially, `offset = page * hitsPerPage`,
+    which is the real API behaviour that exposed the bug.
+    """
+
+    def __init__(self, *, batch: str, total: int, facets: str):
+        self.batch = batch
+        self.total = total
+        self.facets = facets
+        self.requested: list[str] = []
+        template = json.loads(SAMPLE)["hits"][0]
+        self._index = []
+        for i in range(total):
+            hit = dict(template)
+            hit["slug"] = f"company-{i:04d}"
+            hit["name"] = f"Company {i:04d}"
+            self._index.append(hit)
+
+    @staticmethod
+    def _param(url: str, key: str) -> int:
+        from urllib.parse import parse_qs, urlparse
+
+        return int(parse_qs(urlparse(url).query)[key][0])
+
+    async def get(self, url: str, *, headers=None) -> FetchResult:
+        self.requested.append(url)
+        if "facets" in url:
+            return _fetch_result(self.facets, url=url)
+        hits_per_page = self._param(url, "hitsPerPage")
+        page = self._param(url, "page")
+        offset = page * hits_per_page  # the real Algolia semantics
+        window = self._index[offset : offset + hits_per_page]
+        return _fetch_result(
+            json.dumps({"hits": window, "nbHits": self.total, "page": page}), url=url
+        )
+
+
+async def _collect_records(adapter) -> list:
+    records = []
+    async for discovered in adapter.discover():
+        fetch_result = await adapter.fetch(discovered)
+        records.extend(await adapter.parse(fetch_result, discovered))
+    return records
+
+
+@pytest.mark.asyncio
+async def test_multi_page_batch_returns_distinct_companies_not_duplicates():
+    """The exact live failure: a 162-hit batch paged at 100 must yield 162
+    DISTINCT companies, not 100 + 62 overlapping ones."""
+    client = _OffsetAccurateAlgoliaStub(
+        batch="Summer 2024",
+        total=162,
+        facets=json.dumps({"facets": {"batch": {"Summer 2024": 162}}}),
+    )
+    adapter = _adapter(client, max_results=162, page_size=100)
+
+    records = await _collect_records(adapter)
+    urls = [r.source_url for r in records]
+
+    assert len(urls) == 162
+    assert len(set(urls)) == 162, "distinct YC companies were collapsed as duplicates"
+
+
+@pytest.mark.asyncio
+async def test_hits_per_page_is_uniform_within_a_partition():
+    """Root cause guard: a shrinking hitsPerPage moves Algolia's offset
+    backwards, so every page of a partition must request the same size."""
+    client = _OffsetAccurateAlgoliaStub(
+        batch="Summer 2024",
+        total=162,
+        facets=json.dumps({"facets": {"batch": {"Summer 2024": 162}}}),
+    )
+    adapter = _adapter(client, max_results=162, page_size=100)
+
+    discovered = await _collect(adapter)
+    per_batch: dict[str, set[int]] = {}
+    for d in discovered:
+        per_batch.setdefault(d.metadata["batch"], set()).add(d.metadata["hits_per_page"])
+    for batch, sizes in per_batch.items():
+        assert len(sizes) == 1, f"{batch} paged with mixed hitsPerPage {sizes}"
+
+    # Offsets must strictly advance by the page size -- never overlap.
+    offsets = [d.metadata["page"] * d.metadata["hits_per_page"] for d in discovered]
+    assert offsets == sorted(offsets)
+    assert len(set(offsets)) == len(offsets)
+
+
+@pytest.mark.asyncio
+async def test_target_is_still_a_ceiling_and_is_never_overshot():
+    """The fix must not turn the target into an over-delivery: the trim now
+    happens at parse time via `max_records`."""
+    client = _OffsetAccurateAlgoliaStub(
+        batch="Summer 2024",
+        total=162,
+        facets=json.dumps({"facets": {"batch": {"Summer 2024": 162}}}),
+    )
+    adapter = _adapter(client, max_results=120, page_size=100)
+
+    records = await _collect_records(adapter)
+    urls = [r.source_url for r in records]
+
+    assert len(urls) == 120
+    assert len(set(urls)) == 120
+
+
+@pytest.mark.asyncio
+async def test_genuine_repeat_of_the_same_company_is_still_deduplicated():
+    """Legitimate duplicate protection is preserved: the same slug served
+    twice in one page collapses to a single record."""
+    payload = json.loads(SAMPLE)
+    repeated = dict(payload["hits"][0])
+    payload["hits"] = [repeated, dict(repeated), payload["hits"][1]]
+
+    adapter = _adapter(_StubHttpClient())
+    discovered = DiscoveredUrl(
+        url="https://45bwzj1sgc-dsn.algolia.net/1/indexes/YCCompany_production",
+        metadata={"page": 0, "hits_per_page": 100, "batch": None, "max_records": 100},
+    )
+    records = await adapter.parse(_fetch_result(json.dumps(payload)), discovered)
+
+    urls = [r.source_url for r in records]
+    assert len(urls) == 2
+    assert len(set(urls)) == 2
+
+
+@pytest.mark.asyncio
+async def test_full_multi_batch_run_yields_the_full_distinct_target():
+    """End-to-end shape of the live 1,000-record run: several multi-page
+    batches must produce `target` distinct companies, with zero duplicates."""
+
+    class _MultiBatchStub(_OffsetAccurateAlgoliaStub):
+        def __init__(self, counts: dict[str, int]):
+            super().__init__(
+                batch="", total=0, facets=json.dumps({"facets": {"batch": counts}})
+            )
+            self.counts = counts
+            self._per_batch = {}
+            template = json.loads(SAMPLE)["hits"][0]
+            for name, count in counts.items():
+                slug_stem = name.lower().replace(" ", "-")
+                hits = []
+                for i in range(count):
+                    hit = dict(template)
+                    hit["slug"] = f"{slug_stem}-{i:04d}"
+                    hit["name"] = f"{name} Company {i:04d}"
+                    hits.append(hit)
+                self._per_batch[name] = hits
+
+        async def get(self, url: str, *, headers=None) -> FetchResult:
+            self.requested.append(url)
+            if "facets" in url:
+                return _fetch_result(self.facets, url=url)
+            batch = next(
+                (b for b in self.counts if b.replace(" ", "+") in url), None
+            )
+            assert batch is not None, f"no batch filter in {url}"
+            hits_per_page = self._param(url, "hitsPerPage")
+            page = self._param(url, "page")
+            offset = page * hits_per_page
+            window = self._per_batch[batch][offset : offset + hits_per_page]
+            return _fetch_result(json.dumps({"hits": window}), url=url)
+
+    # Real batch sizes from the live facet listing that needed >1 page.
+    client = _MultiBatchStub(
+        {
+            "Summer 2024": 162,
+            "Summer 2026": 162,
+            "Winter 2024": 159,
+            "Summer 2023": 133,
+            "Winter 2023": 133,
+            "Winter 2022": 117,
+            "Summer 2022": 96,
+            "Summer 2025": 95,
+        }
+    )
+    adapter = _adapter(client, max_results=1000, page_size=100)
+
+    records = await _collect_records(adapter)
+    urls = [r.source_url for r in records]
+
+    assert len(urls) == 1000
+    assert len(set(urls)) == 1000, (
+        f"{len(urls) - len(set(urls))} distinct companies collapsed as duplicates"
+    )
