@@ -13,6 +13,17 @@ assume it isn't built.
 | 3 | Async crawler core (HTTP client, retry/backoff, worker pool) | ✅ Done |
 | 4 | Research paper pipeline (arXiv + Papers With Code + GitHub enrichment) | ✅ Done |
 | 5 | Deterministic date engine + 24h freshness utility | ✅ Done |
+| 6 | News pipeline (5 API/RSS sources, extraction, freshness) | ✅ Done |
+| 7 | Jobs pipeline (5 API/sitemap sources, JSON-LD, provenance) | ✅ Done |
+| 8 | LLM orchestration (3 providers, fallback, chunker, 413, metrics) | ✅ Done |
+
+> **⚠️ Sections below dated Phase 4-5 are historical.** Two facts have since
+> changed and are corrected in `CLAUDE_HANDOFF.md` and `README.md`:
+> 1. **Network egress is no longer restricted** — arXiv and all news RSS
+>    feeds are reachable and have been run live successfully.
+> 2. **Papers With Code is dead upstream** — it 302-redirects to
+>    HuggingFace and serves HTML, so the adapter yields 0 records (it fails
+>    loudly and correctly, but the source needs replacing).
 
 ## Current status
 

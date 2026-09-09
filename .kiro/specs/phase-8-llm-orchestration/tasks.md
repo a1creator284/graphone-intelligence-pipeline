@@ -47,4 +47,4 @@
   - *Files*: `README.md`, `.kiro/specs/phase-8-llm-orchestration/tasks.md`
   - *Dependency*: Task 6.
   - *Tests*: `pytest -v` across all tasks.
-  - *Acceptance Criteria*: Zero remaining `[ ]` tasks, clean git state, Phase 8 complete.iant with the original master prompt.
+  - *Acceptance Criteria*: Zero remaining `[ ]` tasks, clean git state, Phase 8 complete and compliant with the original master prompt.
