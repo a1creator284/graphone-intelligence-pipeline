@@ -46,6 +46,36 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+async def dispose_engine() -> None:
+    """Release the process-global engine's connection pool.
+
+    Without this, the pool keeps its connections (and, for aiosqlite, a
+    *non-daemon* connection worker thread) alive, so the interpreter never
+    reaches exit after `asyncio.run()` returns. Idempotent: safe to call when
+    no engine was ever created, and safe to call twice.
+    """
+    global _engine, _session_factory
+    engine = _engine
+    _engine = None
+    _session_factory = None
+    if engine is not None:
+        await engine.dispose()
+
+
+@asynccontextmanager
+async def engine_scope(database_url: str | None = None):
+    """Own an engine for the duration of a run, disposing it on the way out.
+
+    This is the lifecycle boundary for a CLI invocation: whoever creates the
+    engine is responsible for tearing its pool down, including on failure.
+    """
+    engine = init_engine(database_url)
+    try:
+        yield engine
+    finally:
+        await dispose_engine()
+
+
 @asynccontextmanager
 async def session_scope():
     """Provide a transactional scope; commits on success, rolls back on error."""

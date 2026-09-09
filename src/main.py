@@ -18,7 +18,7 @@ import sys
 
 from src.config.logging import configure_logging, get_logger
 from src.config.sources import Vertical, get_sources_for_vertical
-from src.storage.database import init_engine
+from src.storage.database import engine_scope
 from src.storage.models import Base
 
 logger = get_logger(component="cli")
@@ -40,17 +40,19 @@ async def _run_research(args: argparse.Namespace) -> None:
     from src.storage.database import get_session_factory
 
     settings = get_settings()
-    engine = init_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # engine_scope owns the connection pool for this run and disposes it on the
+    # way out, so no pool thread survives into interpreter shutdown.
+    async with engine_scope() as engine:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    factory = get_session_factory()
-    async with factory() as session:
-        result = await run_research_pipeline(
-            session,
-            target=args.target or 1000,
-            max_concurrency=args.workers or settings.max_concurrency,
-        )
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await run_research_pipeline(
+                session,
+                target=args.target or 1000,
+                max_concurrency=args.workers or settings.max_concurrency,
+            )
     logger.info(
         "research_run_summary",
         target=result.target,
@@ -80,17 +82,17 @@ async def _run_news(args: argparse.Namespace) -> None:
     from src.storage.database import get_session_factory
 
     settings = get_settings()
-    engine = init_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with engine_scope() as engine:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    factory = get_session_factory()
-    async with factory() as session:
-        result = await run_news_pipeline(
-            session,
-            target=args.target or 1000,
-            max_concurrency=args.workers or settings.max_concurrency,
-        )
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await run_news_pipeline(
+                session,
+                target=args.target or 1000,
+                max_concurrency=args.workers or settings.max_concurrency,
+            )
     logger.info(
         "news_run_summary",
         target=result.target,
@@ -117,17 +119,17 @@ async def _run_jobs(args: argparse.Namespace) -> None:
     from src.storage.database import get_session_factory
 
     settings = get_settings()
-    engine = init_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with engine_scope() as engine:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    factory = get_session_factory()
-    async with factory() as session:
-        result = await run_jobs_pipeline(
-            session,
-            target=args.target or 1000,
-            max_concurrency=args.workers or settings.max_concurrency,
-        )
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await run_jobs_pipeline(
+                session,
+                target=args.target or 1000,
+                max_concurrency=args.workers or settings.max_concurrency,
+            )
     logger.info(
         "jobs_run_summary",
         target=result.target,
