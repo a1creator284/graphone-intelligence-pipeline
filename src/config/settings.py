@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     # a made-up address.
     openalex_mailto: str | None = None
 
+    # ---- Y Combinator company directory ----------------------------------
+    # The YC directory's own search UI ships a public, search-only Algolia
+    # app id + key in the page source (window.AlgoliaOpts). They are not
+    # secrets, but YC may rotate them, so they are overridable here without
+    # a code change. Unset -> the adapter uses the values captured from the
+    # live page.
+    yc_algolia_app_id: str | None = None
+    yc_algolia_api_key: str | None = None
+
     # ---- GitHub enrichment ----------------------------------------------
     github_token: str | None = None
     github_api_base_url: str = "https://api.github.com"

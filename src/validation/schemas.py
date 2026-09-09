@@ -193,3 +193,42 @@ def validate_job_record(data: dict) -> tuple[JobRecord | None, str | None]:
         return JobRecord(**data), None
     except Exception as exc:  # noqa: BLE001
         return None, str(exc)
+
+
+class StartupRecord(BaseModel):
+    """Startup/company record validation (startups vertical).
+
+    Deliberately narrow: it only admits the fields the Startup table
+    actually stores, all of which must come verbatim from the source.
+    `employee_count` is optional and stays None when the source did not
+    publish one -- it is never defaulted to 0 or estimated.
+    """
+
+    schema_version: str = "1.0"
+    record_type: str = "STARTUP"
+
+    entity_name: str = Field(min_length=1)
+    source_url: str
+    source_name: str = Field(min_length=1)
+    employee_count: int | None = Field(default=None, ge=0)
+
+    @field_validator("entity_name")
+    @classmethod
+    def _entity_name_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("entity_name must not be blank/whitespace-only")
+        return stripped
+
+    @field_validator("source_url")
+    @classmethod
+    def _source_url_must_be_http(cls, v: str) -> str:
+        HttpUrl(v)
+        return v
+
+
+def validate_startup_record(data: dict) -> tuple[StartupRecord | None, str | None]:
+    try:
+        return StartupRecord(**data), None
+    except Exception as exc:  # noqa: BLE001 - surfaced as a rejection reason
+        return None, str(exc)

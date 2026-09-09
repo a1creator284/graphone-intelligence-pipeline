@@ -1,0 +1,72 @@
+{
+ "hits": [],
+ "nbHits": 1937,
+ "page": 0,
+ "nbPages": 0,
+ "hitsPerPage": 0,
+ "facets": {
+  "batch": {
+   "Summer 2024": 162,
+   "Summer 2026": 162,
+   "Winter 2024": 159,
+   "Summer 2023": 133,
+   "Winter 2023": 133,
+   "Winter 2022": 117,
+   "Summer 2022": 96,
+   "Summer 2025": 95,
+   "Winter 2025": 92,
+   "Summer 2021": 91,
+   "Fall 2025": 86,
+   "Spring 2025": 83,
+   "Winter 2021": 68,
+   "Fall 2024": 56,
+   "Winter 2020": 49,
+   "Winter 2026": 37,
+   "Summer 2020": 36,
+   "Winter 2019": 31,
+   "Spring 2026": 28,
+   "Summer 2019": 28,
+   "Fall 2026": 26,
+   "Summer 2018": 26,
+   "Winter 2018": 25,
+   "Summer 2017": 23,
+   "Winter 2017": 20,
+   "Winter 2015": 16,
+   "Summer 2016": 15,
+   "Winter 2016": 15,
+   "Summer 2014": 6,
+   "Winter 2014": 6,
+   "Summer 2015": 4,
+   "Summer 2011": 3,
+   "Summer 2009": 2,
+   "Summer 2012": 2,
+   "Winter 2012": 2,
+   "Winter 2013": 2,
+   "Summer 2008": 1,
+   "Summer 2013": 1
+  }
+ },
+ "exhaustiveFacetsCount": true,
+ "exhaustiveNbHits": true,
+ "exhaustiveTypo": true,
+ "exhaustive": {
+  "facetsCount": true,
+  "nbHits": true,
+  "typo": true
+ },
+ "query": "",
+ "params": "x-algolia-application-id=45BWZJ1SGC&x-algolia-api-key=NzllNTY5MzJiZGM2OTY2ZTQwMDEzOTNhYWZiZGRjODlhYzVkNjBmOGRjNzJiMWM4ZTU0ZDlhYTZjOTJiMjlhMWFuYWx5dGljc1RhZ3M9eWNkYyZyZXN0cmljdEluZGljZXM9WUNDb21wYW55X3Byb2R1Y3Rpb24lMkNZQ0NvbXBhbnlfQnlfTGF1bmNoX0RhdGVfcHJvZHVjdGlvbiZ0YWdGaWx0ZXJzPSU1QiUyMnljZGNfcHVibGljJTIyJTVE&query=&hitsPerPage=0&facets=%5B%22batch%22%5D&maxValuesPerFacet=1000&facetFilters=%5B%5B%22tags%3AArtificial+Intelligence%22%2C+%22tags%3AAI%22%2C+%22tags%3AGenerative+AI%22%2C+%22tags%3AMachine+Learning%22%5D%5D&analyticsTags=ycdc&restrictIndices=YCCompany_production%2CYCCompany_By_Launch_Date_production&tagFilters=%5B%22ycdc_public%22%5D",
+ "renderingContent": {},
+ "extensions": {
+  "queryCategorization": {}
+ },
+ "processingTimeMS": 2,
+ "processingTimingsMS": {
+  "_request": {
+   "roundTrip": 71
+  },
+  "extensions": 1,
+  "total": 2
+ },
+ "serverTimeMS": 2
+}

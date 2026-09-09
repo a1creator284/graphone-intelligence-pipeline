@@ -1,0 +1,570 @@
+{
+ "hits": [
+  {
+   "id": 29522,
+   "name": "Marr Labs",
+   "slug": "marr-labs",
+   "former_names": [],
+   "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/78a360f7a0cb054dd1d879714a91edbac53734cc.png",
+   "website": "https://www.marrlabs.com/",
+   "all_locations": "San Francisco, CA, USA",
+   "long_description": "Marr Labs is making AI-voice agents that are indistinguishable from humans. Han and Dave previously created speech tech company Vlingo that powered the first Siri app and was acquired for $225M. \r\n\r\n\r\nNow they are taking voice to the next level by making AI-voice agents that can handle virtually any phone-based job, from answering calls to schedule appointments to call center sales and support jobs—all at a fraction of the cost of a human agent.\r\n \r\n\r\nIn the US alone, businesses handle 17 billion calls a year at an average cost of $5 per call–an $85 billion addressable market. ",
+   "one_liner": "AI-voice agents that are indistinguishable from humans.",
+   "team_size": 9,
+   "industry": "B2B",
+   "subindustry": "B2B",
+   "launched_at": 1709760702,
+   "tags": [
+    "Artificial Intelligence",
+    "Conversational AI",
+    "AI Assistant"
+   ],
+   "tags_highlighted": [],
+   "top_company": false,
+   "isHiring": false,
+   "nonprofit": false,
+   "batch": "Winter 2024",
+   "status": "Active",
+   "industries": [
+    "B2B"
+   ],
+   "regions": [
+    "United States of America",
+    "America / Canada",
+    "Remote",
+    "Partly Remote"
+   ],
+   "stage": "Early",
+   "app_video_public": false,
+   "demo_day_video_public": false,
+   "app_answers": null,
+   "question_answers": false,
+   "objectID": "29522",
+   "_highlightResult": {
+    "name": {
+     "value": "Marr Labs",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "website": {
+     "value": "https://www.marrlabs.com/",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "all_locations": {
+     "value": "San Francisco, CA, USA",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "long_description": {
+     "value": "Marr Labs is making AI-voice agents that are indistinguishable from humans. Han and Dave previously created speech tech company Vlingo that powered the first Siri app and was acquired for $225M. \r\n\r\n\r\nNow they are taking voice to the next level by making AI-voice agents that can handle virtually any phone-based job, from answering calls to schedule appointments to call center sales and support jobs—all at a fraction of the cost of a human agent.\r\n \r\n\r\nIn the US alone, businesses handle 17 billion calls a year at an average cost of $5 per call–an $85 billion addressable market. ",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "one_liner": {
+     "value": "AI-voice agents that are indistinguishable from humans.",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "tags": [
+     {
+      "value": "Artificial Intelligence",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Conversational AI",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "AI Assistant",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "industries": [
+     {
+      "value": "B2B",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ]
+   }
+  },
+  {
+   "id": 29519,
+   "name": "Forge Rewards",
+   "slug": "forge-rewards",
+   "former_names": [
+    "Forge",
+    "Forge Rewards",
+    "Forge"
+   ],
+   "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/c135eee2915601bd39910219334c34b2549944a0.png",
+   "website": "https://www.joinforge.app/",
+   "all_locations": "San Francisco, CA, USA",
+   "long_description": "",
+   "one_liner": "Starbucks app for restaurants",
+   "team_size": 5,
+   "industry": "B2B",
+   "subindustry": "B2B",
+   "launched_at": 1710184013,
+   "tags": [
+    "Artificial Intelligence",
+    "Restaurant Tech",
+    "Food Tech"
+   ],
+   "tags_highlighted": [],
+   "top_company": false,
+   "isHiring": false,
+   "nonprofit": false,
+   "batch": "Winter 2024",
+   "status": "Active",
+   "industries": [
+    "B2B"
+   ],
+   "regions": [
+    "United States of America",
+    "America / Canada"
+   ],
+   "stage": "Early",
+   "app_video_public": false,
+   "demo_day_video_public": false,
+   "app_answers": null,
+   "question_answers": false,
+   "objectID": "29519",
+   "_highlightResult": {
+    "name": {
+     "value": "Forge Rewards",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "former_names": [
+     {
+      "value": "Forge",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Forge Rewards",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Forge",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "website": {
+     "value": "https://www.joinforge.app/",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "all_locations": {
+     "value": "San Francisco, CA, USA",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "long_description": {
+     "value": "",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "one_liner": {
+     "value": "Starbucks app for restaurants",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "tags": [
+     {
+      "value": "Artificial Intelligence",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Restaurant Tech",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Food Tech",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "industries": [
+     {
+      "value": "B2B",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ]
+   }
+  },
+  {
+   "id": 29516,
+   "name": "Million",
+   "slug": "million",
+   "former_names": [
+    "Million.js",
+    "Million",
+    "Same"
+   ],
+   "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/cf5c5c98069c0ec6b53c093dd68742e6a1c17ae9.png",
+   "website": "https://million.dev",
+   "all_locations": "San Francisco, CA, USA",
+   "long_description": "Remember the first time you hit  and your code actually worked? Something that didn't exist before, now alive on your screen.\r\n\r\nToday, coding agents can do that, orders of magnitude faster. But their verification is shallow at best. The faster agents generate code, the wider the gap grows. Nothing verifies software at the speed agents ship code.\r\n\r\nWe believe verification unlocks long-horizon coding agents: agents that run for days and prove their work as they go.",
+   "one_liner": "Tools for agent verification",
+   "team_size": 5,
+   "industry": "B2B",
+   "subindustry": "B2B -> Engineering, Product and Design",
+   "launched_at": 1703896590,
+   "tags": [
+    "Artificial Intelligence"
+   ],
+   "tags_highlighted": [],
+   "top_company": false,
+   "isHiring": false,
+   "nonprofit": false,
+   "batch": "Winter 2024",
+   "status": "Active",
+   "industries": [
+    "B2B",
+    "Engineering, Product and Design"
+   ],
+   "regions": [
+    "United States of America",
+    "America / Canada",
+    "Remote",
+    "Partly Remote"
+   ],
+   "stage": "Early",
+   "app_video_public": false,
+   "demo_day_video_public": false,
+   "app_answers": null,
+   "question_answers": false,
+   "objectID": "29516",
+   "_highlightResult": {
+    "name": {
+     "value": "Million",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "former_names": [
+     {
+      "value": "Million.js",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Million",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Same",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "website": {
+     "value": "https://million.dev",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "all_locations": {
+     "value": "San Francisco, CA, USA",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "long_description": {
+     "value": "Remember the first time you hit  and your code actually worked? Something that didn't exist before, now alive on your screen.\r\n\r\nToday, coding agents can do that, orders of magnitude faster. But their verification is shallow at best. The faster agents generate code, the wider the gap grows. Nothing verifies software at the speed agents ship code.\r\n\r\nWe believe verification unlocks long-horizon coding agents: agents that run for days and prove their work as they go.",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "one_liner": {
+     "value": "Tools for agent verification",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "tags": [
+     {
+      "value": "Artificial Intelligence",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "industries": [
+     {
+      "value": "B2B",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Engineering, Product and Design",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ]
+   }
+  },
+  {
+   "id": 29513,
+   "name": "GetCrux",
+   "slug": "getcrux",
+   "former_names": [
+    "Crux",
+    "getcrux"
+   ],
+   "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/e441803edd599221aeb0cd1571b07115de1320cb.png",
+   "website": "http://getcrux.ai/",
+   "all_locations": "San Francisco, CA, USA",
+   "long_description": "GetCrux is the AI Creative Strategist to launch winning ads.\r\n\r\nCreatives have become the biggest lever to win on ad platforms. Yet, there is no clear way to figure out why something works. Marketers end up guessing and replicating the best performing ad, only to see it fail - with high CAC & wasted dollars.\r\n\r\nGetCrux helps performance marketers find winning patterns in their ad creatives across 100+ parameters like hooks, messaging, storyline, music, pacing, and recommend exactly what to launch next.",
+   "one_liner": "AI Creative Strategist",
+   "team_size": 9,
+   "industry": "B2B",
+   "subindustry": "B2B -> Analytics",
+   "launched_at": 1706206728,
+   "tags": [
+    "Artificial Intelligence",
+    "SaaS",
+    "Analytics",
+    "Marketing",
+    "Automation"
+   ],
+   "tags_highlighted": [],
+   "top_company": false,
+   "isHiring": true,
+   "nonprofit": false,
+   "batch": "Winter 2024",
+   "status": "Active",
+   "industries": [
+    "B2B",
+    "Analytics"
+   ],
+   "regions": [
+    "United States of America",
+    "America / Canada"
+   ],
+   "stage": "Early",
+   "app_video_public": true,
+   "demo_day_video_public": false,
+   "app_answers": null,
+   "question_answers": false,
+   "objectID": "29513",
+   "_highlightResult": {
+    "name": {
+     "value": "GetCrux",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "former_names": [
+     {
+      "value": "Crux",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "getcrux",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "website": {
+     "value": "http://getcrux.ai/",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "all_locations": {
+     "value": "San Francisco, CA, USA",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "long_description": {
+     "value": "GetCrux is the AI Creative Strategist to launch winning ads.\r\n\r\nCreatives have become the biggest lever to win on ad platforms. Yet, there is no clear way to figure out why something works. Marketers end up guessing and replicating the best performing ad, only to see it fail - with high CAC & wasted dollars.\r\n\r\nGetCrux helps performance marketers find winning patterns in their ad creatives across 100+ parameters like hooks, messaging, storyline, music, pacing, and recommend exactly what to launch next.",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "one_liner": {
+     "value": "AI Creative Strategist",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "tags": [
+     {
+      "value": "Artificial Intelligence",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "SaaS",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Analytics",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Marketing",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Automation",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "industries": [
+     {
+      "value": "B2B",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Analytics",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ]
+   }
+  },
+  {
+   "id": 29511,
+   "name": "InspectMind AI",
+   "slug": "inspectmind-ai",
+   "former_names": [],
+   "small_logo_thumb_url": "https://bookface-images.s3.amazonaws.com/small_logos/380201f9cadb6a3d51cb0328080b2378d425269f.png",
+   "website": "https://www.inspectmind.ai",
+   "all_locations": "San Francisco, CA, USA",
+   "long_description": "An AI agent that catches issues in construction drawings before they become costly rework and project delays",
+   "one_liner": "AI agent for construction drawings review",
+   "team_size": 2,
+   "industry": "Real Estate and Construction",
+   "subindustry": "Real Estate and Construction -> Construction",
+   "launched_at": 1705128056,
+   "tags": [
+    "Artificial Intelligence",
+    "Construction",
+    "B2B",
+    "Proptech",
+    "AI"
+   ],
+   "tags_highlighted": [],
+   "top_company": false,
+   "isHiring": false,
+   "nonprofit": false,
+   "batch": "Winter 2024",
+   "status": "Active",
+   "industries": [
+    "Real Estate and Construction",
+    "Construction"
+   ],
+   "regions": [
+    "United States of America",
+    "America / Canada"
+   ],
+   "stage": "Early",
+   "app_video_public": false,
+   "demo_day_video_public": false,
+   "app_answers": null,
+   "question_answers": false,
+   "objectID": "29511",
+   "_highlightResult": {
+    "name": {
+     "value": "InspectMind AI",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "website": {
+     "value": "https://www.inspectmind.ai",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "all_locations": {
+     "value": "San Francisco, CA, USA",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "long_description": {
+     "value": "An AI agent that catches issues in construction drawings before they become costly rework and project delays",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "one_liner": {
+     "value": "AI agent for construction drawings review",
+     "matchLevel": "none",
+     "matchedWords": []
+    },
+    "tags": [
+     {
+      "value": "Artificial Intelligence",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Construction",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "B2B",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Proptech",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "AI",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ],
+    "industries": [
+     {
+      "value": "Real Estate and Construction",
+      "matchLevel": "none",
+      "matchedWords": []
+     },
+     {
+      "value": "Construction",
+      "matchLevel": "none",
+      "matchedWords": []
+     }
+    ]
+   }
+  }
+ ],
+ "nbHits": 94,
+ "page": 0,
+ "nbPages": 19,
+ "hitsPerPage": 5,
+ "exhaustiveNbHits": true,
+ "exhaustiveTypo": true,
+ "exhaustive": {
+  "nbHits": true,
+  "typo": true
+ },
+ "query": "",
+ "params": "x-algolia-application-id=45BWZJ1SGC&x-algolia-api-key=NzllNTY5MzJiZGM2OTY2ZTQwMDEzOTNhYWZiZGRjODlhYzVkNjBmOGRjNzJiMWM4ZTU0ZDlhYTZjOTJiMjlhMWFuYWx5dGljc1RhZ3M9eWNkYyZyZXN0cmljdEluZGljZXM9WUNDb21wYW55X3Byb2R1Y3Rpb24lMkNZQ0NvbXBhbnlfQnlfTGF1bmNoX0RhdGVfcHJvZHVjdGlvbiZ0YWdGaWx0ZXJzPSU1QiUyMnljZGNfcHVibGljJTIyJTVE&query=&hitsPerPage=5&page=0&facetFilters=%5B%5B%22tags%3AArtificial+Intelligence%22%5D%2C+%5B%22batch%3AWinter+2024%22%5D%5D&analyticsTags=ycdc&restrictIndices=YCCompany_production%2CYCCompany_By_Launch_Date_production&tagFilters=%5B%22ycdc_public%22%5D",
+ "renderingContent": {},
+ "extensions": {
+  "queryCategorization": {}
+ },
+ "processingTimeMS": 2,
+ "processingTimingsMS": {
+  "_request": {
+   "roundTrip": 70
+  },
+  "extensions": 1,
+  "total": 2
+ },
+ "serverTimeMS": 3
+}

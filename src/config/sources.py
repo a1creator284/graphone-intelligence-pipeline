@@ -193,11 +193,22 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         name="ycombinator_directory",
         vertical=Vertical.STARTUPS,
         base_url="https://www.ycombinator.com/companies",
-        discovery=DiscoveryMechanism.HTTP_CRAWL,
-        parsing_strategy="Public company directory JSON endpoint used by the site's own search UI",
+        discovery=DiscoveryMechanism.OFFICIAL_API,
+        parsing_strategy=(
+            "Public search-only Algolia index (YCCompany_production) that the YC directory's "
+            "own UI queries; AI tag facet filter, batch-partitioned paging"
+        ),
         date_strategy="not applicable (entity data, not time-series)",
-        rate_limit_notes="Client-side throttled; single paginated crawl per run.",
-        known_limitations="Employee count is a banded estimate on YC's own site, not exact; stored as provided or null.",
+        rate_limit_notes=(
+            "Public search-only key scoped to the ycdc_public tag filter; bounded concurrency "
+            "via AsyncHttpClient, one facet query plus paged queries per run."
+        ),
+        known_limitations=(
+            "Algolia caps a single query at 1,000 retrievable hits, so discovery partitions by "
+            "YC batch to reach the full AI-tagged population (~1,900). team_size is stored "
+            "verbatim as employee_count or left null; it is never estimated. The public key is "
+            "browser-visible and YC may rotate it (override via YC_ALGOLIA_API_KEY)."
+        ),
     ),
     SourceDefinition(
         name="producthunt_ai_products",
