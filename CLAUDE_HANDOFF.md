@@ -3,7 +3,7 @@
 Operational checkpoint for resuming work on the GraphOne / FrontierAtlas
 intelligence pipeline. Keep this file short and factual.
 
-**Last updated:** 2026-09-09 (session 5)
+**Last updated:** 2026-09-09 (session 6)
 **Branch:** `phase-8-repair`
 **Repo:** https://github.com/a1creator284/graphone-intelligence-pipeline
 
@@ -16,6 +16,44 @@ Baseline at session start was 321; session 5 added 45 tests and broke none.
 
 **Session 5 did exactly one thing: implemented the STARTUPS ingestion
 milestone (requirement #1). See below.**
+
+## Session 6 (CLI wiring verification) — STARTUPS MILESTONE CLOSED
+
+The reported `vertical_not_yet_wired` symptom was an **environment** problem,
+not a code problem: `.venv/` is gitignored and was missing on the fresh
+sandbox, so `python3 -m src.main` failed before reaching the dispatcher.
+`src/main.py` already dispatched `Vertical.STARTUPS` -> `_run_startups()` ->
+`run_startups_pipeline()` (committed in `013fb4e`). No pipeline/crawler code
+was changed.
+
+Changed this session:
+- `tests/test_cli_integration.py` — two new focused tests:
+  `test_cli_startups_vertical_is_wired` (asserts the pipeline is invoked with
+  the session, `--target 5` and `--workers 7`, that `startups_run_summary` is
+  emitted, and that `vertical_not_yet_wired` is **not**) and
+  `test_cli_startups_dry_run_does_not_execute_pipeline`.
+- `src/main.py` — module docstring only (stale status text).
+
+Verified:
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # REQUIRED first
+
+DATABASE_URL="sqlite+aiosqlite:///:memory:" .venv/bin/python -m pytest \
+  tests/test_cli_integration.py tests/test_startups_pipeline.py \
+  tests/test_yc_startups_adapter.py tests/test_cli_lifecycle.py -q
+# -> 54 passed
+
+# Live CLI smoke test, persistent DB
+DATABASE_URL="sqlite+aiosqlite:////tmp/smoke.db" \
+  .venv/bin/python -m src.main --vertical startups --target 5
+# -> startups_run_summary: valid_records=5, duplicates=0, rejected=0,
+#    entities_resolved=5, by_source={"ycombinator_directory": 5}; exit code 0
+# -> `select count(*) from startups` == 5 (real YC rows: DreamRP, Conductor,
+#    Syntra, ... with ycombinator.com source_urls)
+```
+
+The 1,000-record run was **not** executed and must be run manually:
+`DATABASE_URL=... .venv/bin/python -m src.main --vertical startups --target 1000`
 
 ## What Session 5 Did
 
