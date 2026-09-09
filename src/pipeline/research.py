@@ -1,10 +1,13 @@
 """
 Research paper vertical pipeline (Phase 4).
 
-Wires together: ArxivAdapter + PapersWithCodeAdapter (discover/fetch/parse)
+Wires together: ArxivAdapter + OpenAlexAdapter (discover/fetch/parse)
 -> worker pool -> schema validation -> GitHub enrichment (only for papers
 whose source explicitly linked a repo) -> provenance persistence
 (RawDocument) -> idempotent persistence (ResearchPaperRepository).
+
+OpenAlex replaced Papers With Code, whose API is dead upstream (302 -> HTML).
+The PWC adapter module and its registry entry are retained but disabled.
 
 Run via `scripts/run_research.py` or `python -m src.main --vertical research`.
 """
@@ -15,9 +18,10 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.logging import get_logger
+from src.config.settings import get_settings
 from src.crawlers.arxiv import ArxivAdapter
 from src.crawlers.http import AsyncHttpClient
-from src.crawlers.papers_with_code import PapersWithCodeAdapter
+from src.crawlers.openalex import OpenAlexAdapter
 from src.errors import RateLimitError
 from src.extraction.github import GitHubEnrichmentClient
 from src.pipeline.workers import run_adapter
@@ -27,8 +31,9 @@ from src.validation.schemas import validate_research_paper
 logger = get_logger(component="research_pipeline")
 
 # Only these adapters are wired for the research vertical (Section 10
-# priority: arXiv first, then Papers With Code).
-ADAPTER_CLASSES = [ArxivAdapter, PapersWithCodeAdapter]
+# priority: arXiv first, then OpenAlex). Papers With Code is dead upstream
+# and is disabled in the source registry rather than listed here.
+ADAPTER_CLASSES = [ArxivAdapter, OpenAlexAdapter]
 
 
 @dataclass(slots=True)
@@ -61,23 +66,86 @@ async def run_research_pipeline(
     async with AsyncHttpClient(max_concurrency=max_concurrency) as http_client:
         github_client = GitHubEnrichmentClient(http_client)
 
-        # Split the overall target roughly evenly across the two adapters so
-        # neither source is starved when target is small.
-        per_adapter_target = max(1, target // len(ADAPTER_CLASSES))
+        def build_adapter(adapter_cls, max_results: int):
+            if adapter_cls is ArxivAdapter:
+                return ArxivAdapter(
+                    http_client, search_query=search_query, max_results=max_results, page_size=50
+                )
+            if adapter_cls is OpenAlexAdapter:
+                return OpenAlexAdapter(
+                    http_client,
+                    max_results=max_results,
+                    page_size=50,
+                    mailto=get_settings().openalex_mailto,
+                )
+            return adapter_cls(http_client, max_results=max_results, page_size=50)  # pragma: no cover
 
-        adapters = [
-            ArxivAdapter(http_client, search_query=search_query, max_results=per_adapter_target, page_size=50),
-            PapersWithCodeAdapter(http_client, max_results=per_adapter_target, page_size=50),
-        ]
+        all_records: list = []
+        seen_urls: set[str] = set()
+        # requested/exhausted are keyed by adapter class so a second pass can
+        # tell "this source ran dry" from "this source had more to give".
+        requested: dict[type, int] = {}
+        exhausted: dict[type, bool] = {}
 
-        all_records = []
-        for adapter in adapters:
+        async def collect(adapter, asked_for: int) -> int:
+            """Run one adapter and keep only records not already collected.
+            Returns how many records the adapter produced (before dedup)."""
             stats, records = await run_adapter(adapter, max_concurrency=max_concurrency)
             result.discovered += stats.discovered
             result.fetched += stats.fetched
             result.parsed += stats.parsed_records
-            result.by_source[adapter.name] = len(records)
-            all_records.extend(records)
+            new_records = [r for r in records if r.source_url not in seen_urls]
+            seen_urls.update(r.source_url for r in new_records)
+            result.by_source[adapter.name] = result.by_source.get(adapter.name, 0) + len(new_records)
+            all_records.extend(new_records)
+            logger.info(
+                "research_adapter_collected",
+                source=adapter.name,
+                asked_for=asked_for,
+                produced=len(records),
+                new=len(new_records),
+                running_total=len(all_records),
+            )
+            return len(records)
+
+        # Pass 1: fill-forward allocation. Instead of a fixed
+        # `target // len(ADAPTER_CLASSES)` split -- which silently misses the
+        # target whenever one source runs dry -- each adapter is asked for a
+        # fair share of what is *still outstanding*, so a shortfall from an
+        # earlier source is carried forward to later ones.
+        adapter_count = len(ADAPTER_CLASSES)
+        for index, adapter_cls in enumerate(ADAPTER_CLASSES):
+            remaining = target - len(all_records)
+            if remaining <= 0:
+                break
+            share = max(1, -(-remaining // (adapter_count - index)))  # ceil div
+            produced = await collect(build_adapter(adapter_cls, share), share)
+            requested[adapter_cls] = share
+            exhausted[adapter_cls] = produced < share
+
+        # Pass 2: if the last adapter(s) came up short, give the sources that
+        # still had records to give one chance to make up the difference.
+        # Bounded to a single extra round, and records already collected are
+        # dropped by URL -- the target is never padded with fabricated rows.
+        if target - len(all_records) > 0:
+            for adapter_cls in ADAPTER_CLASSES:
+                shortfall = target - len(all_records)
+                if shortfall <= 0:
+                    break
+                if exhausted.get(adapter_cls, True):
+                    continue  # source ran dry; asking again only re-fetches
+                topped_up_to = requested[adapter_cls] + shortfall
+                await collect(build_adapter(adapter_cls, topped_up_to), topped_up_to)
+
+        if len(all_records) < target:
+            # Honest under-delivery: the sources simply did not have enough
+            # matching records. Nothing is invented to close the gap.
+            logger.warning(
+                "research_target_not_met",
+                target=target,
+                collected=len(all_records),
+                by_source=dict(result.by_source),
+            )
 
         for record in all_records:
             data = dict(record.data)

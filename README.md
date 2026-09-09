@@ -15,7 +15,7 @@ implemented and test-verified as of this commit (286 passing tests):**
 | 1 | Repo foundation, settings, structured logging, Docker | ✅ Done |
 | 2 | Database models (14 tables), repositories, idempotent upserts | ✅ Done |
 | 3 | Async crawler core: HTTP client, retry/backoff, worker pool | ✅ Done |
-| 4 | Research paper pipeline: arXiv + Papers With Code + GitHub enrichment | ✅ Done |
+| 4 | Research paper pipeline: arXiv + OpenAlex + GitHub enrichment | ✅ Done |
 | 5 | Deterministic date engine + 24h freshness utility | ✅ Done |
 | 6 | News pipeline: 5 API/RSS sources, validation, freshness filtering | ✅ Done |
 | 7 | Jobs pipeline: 5 API/Sitemap sources, JSON-LD, validation, provenance | ✅ Done |
@@ -78,9 +78,29 @@ continue rather than crashing or inventing data:
 {"by_source": {"arxiv": 1, "papers_with_code": 0}}
 ```
 
-This is correct fail-loud behavior, but the source is permanently dead and
-should be **replaced** (HuggingFace Papers or Semantic Scholar are the
-natural successors). Tracked as the top item in "Next phases".
+This was correct fail-loud behavior, but the source is permanently dead, so
+it has now been **replaced by OpenAlex** (`api.openalex.org/works`, verified
+HTTP 200, no API key). Semantic Scholar was rejected as the replacement
+because it returns HTTP 429 to unauthenticated traffic.
+
+`papers_with_code` is **disabled, not deleted**: the adapter module, its
+tests, and its `SOURCE_REGISTRY` entry (`enabled=False`, with the breakage
+recorded in `known_limitations`) all remain, so the dead-source handling
+stays demonstrable and the history is auditable.
+
+What OpenAlex does and does not give us:
+
+- **Mapped verbatim:** `title`, `authorships[].author.display_name`,
+  `publication_date`, the OpenAlex work ID (`W…`) as `paper_external_id`,
+  and a `paper_url` chosen from values actually present in the response
+  (`doi` → `primary_location.landing_page_url` → the OpenAlex work URL).
+- **Always NULL:** `github_url` / `github_stars`. OpenAlex has no repository
+  relation at all, and a repo is never inferred from a similar name.
+- **Polite pool:** `OPENALEX_MAILTO` is appended as `mailto=` when set. When
+  it is unset the parameter is simply omitted — no address is invented.
+- **Failure mode:** a JSON error body (no `results` key) or an HTML page
+  raises `ParsingError` and yields **zero** records; it is never treated as
+  an empty-but-valid page.
 
 ## A bug this approach already caught
 
@@ -109,14 +129,14 @@ pinned versions.
 src/
   config/       settings, source registry, logging
   crawlers/     HTTP client, retry/backoff, base adapter interface,
-                arxiv.py, papers_with_code.py
+                arxiv.py, openalex.py, papers_with_code.py (disabled)
   extraction/   dates.py (date engine + freshness), github.py (enrichment), urls.py
   validation/   schemas.py (Pydantic record validation)
   storage/      SQLAlchemy models, async engine, repositories
   pipeline/     worker pool + research.py (research vertical orchestration)
   errors.py     typed error hierarchy
 tests/          unit tests (no live network) + tests/test_http_integration.py (opt-in, live)
-  fixtures/     realistic arXiv/Papers With Code API response fixtures
+  fixtures/     captured arXiv/OpenAlex API response fixtures (real responses)
 ```
 (`llm/`, `resolution/`, `export/` exist as package stubs for Phases 8+.)
 
@@ -175,8 +195,11 @@ python -m src.main --vertical news --dry-run                        # reports re
    paginated discovery, extracts title/authors/paper_url/published_date,
    and pulls a GitHub URL **only** when one is explicitly mentioned in the
    abstract/comment text (never inferred from a similar name).
-2. `PapersWithCodeAdapter` (`src/crawlers/papers_with_code.py`) — official
-   PWC JSON REST API, uses PWC's own `repository` relation when present.
+2. `OpenAlexAdapter` (`src/crawlers/openalex.py`) — official OpenAlex JSON
+   REST API (`/works`, filtered to the "Artificial intelligence" concept),
+   `page`/`per-page` pagination capped at the API's 10,000-result basic-paging
+   limit, polite-pool `mailto=`. Replaces the retired
+   `PapersWithCodeAdapter`, which is kept on disk but no longer wired in.
 3. `GitHubEnrichmentClient` (`src/extraction/github.py`) — resolves each
    discovered repo URL against the real GitHub API, in-process cached so a
    repo is never requested twice per run; a 404 nulls out the link rather
@@ -390,10 +413,8 @@ does not retry or attempt to defeat the block.
 Phases 8 (LLM orchestration) and 12 (entity resolution) are complete.
 Immediate priorities, in order:
 
-1. **Replace the dead Papers With Code source** — it now redirects to
-   HuggingFace and returns HTML. OpenAlex (`api.openalex.org`, verified
-   HTTP 200, no key required) is the leading candidate; Semantic Scholar
-   currently rate-limits unauthenticated traffic (HTTP 429).
+1. ~~Replace the dead Papers With Code source~~ — **done**: replaced by
+   OpenAlex, with the PWC entry disabled rather than deleted.
 2. **Phases 9-11: startups + products pipelines.** Note the YC Algolia
    endpoint returns HTTP 403 and Product Hunt's GraphQL API requires an
    OAuth token — source access must be re-verified before these are built.

@@ -62,6 +62,13 @@ class Settings(BaseSettings):
     # decide when a document needs to be split (see extraction/chunker.py).
     llm_token_budget: int = 12000
 
+    # ---- OpenAlex --------------------------------------------------------
+    # OpenAlex asks unauthenticated clients to identify themselves with a
+    # `mailto=` parameter to enter the faster "polite pool". It is optional:
+    # when unset the adapter simply omits the parameter rather than sending
+    # a made-up address.
+    openalex_mailto: str | None = None
+
     # ---- GitHub enrichment ----------------------------------------------
     github_token: str | None = None
     github_api_base_url: str = "https://api.github.com"

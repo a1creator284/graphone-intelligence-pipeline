@@ -56,6 +56,23 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         known_limitations="GitHub links are only present when an author includes one in the abstract or comment field; not guaranteed.",
     ),
     SourceDefinition(
+        name="openalex",
+        vertical=Vertical.RESEARCH,
+        base_url="https://api.openalex.org/works",
+        discovery=DiscoveryMechanism.OFFICIAL_API,
+        parsing_strategy="JSON REST API (/works, filtered by the 'Artificial intelligence' concept) -> title/authorships/DOI/landing page",
+        date_strategy="API 'publication_date' field (date, assumed UTC midnight); null when the work has none",
+        rate_limit_notes=(
+            "No API key. 100k calls/day, 10 req/s shared pool; sending a `mailto=` "
+            "parameter (settings.openalex_mailto) joins the faster polite pool. Back off on 429."
+        ),
+        known_limitations=(
+            "No repository relation at all, so github_url is always NULL from this source. "
+            "Basic page/per-page paging is capped at 10,000 results; deeper collection needs cursor paging. "
+            "publication_date is a date only (no time) and is occasionally a publisher-supplied future date."
+        ),
+    ),
+    SourceDefinition(
         name="papers_with_code",
         vertical=Vertical.RESEARCH,
         base_url="https://paperswithcode.com/api/v1",
@@ -63,7 +80,14 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         parsing_strategy="JSON REST API -> paper + linked repository objects",
         date_strategy="API 'published' field (date, assumed UTC midnight)",
         rate_limit_notes="Public API, generous but unauthenticated rate limit; back off on 429.",
-        known_limitations="Not all papers have a linked repository; do not infer one.",
+        known_limitations=(
+            "DEAD UPSTREAM (re-verified 2026-09-09): /api/v1/papers/ returns 302 -> "
+            "huggingface.co/papers/trending and serves HTML, not JSON. Disabled rather than "
+            "deleted so the historical configuration and the dead-source handling remain visible. "
+            "Superseded by the 'openalex' source above. Original limitation: not all papers have "
+            "a linked repository; do not infer one."
+        ),
+        enabled=False,
     ),
     SourceDefinition(
         name="hackernews_ai",

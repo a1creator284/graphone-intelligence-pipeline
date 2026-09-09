@@ -3,151 +3,215 @@
 Operational checkpoint for resuming work on the GraphOne / FrontierAtlas
 intelligence pipeline. Keep this file short and factual.
 
-**Last updated:** 2026-09-09 (session 2)
+**Last updated:** 2026-09-09 (session 3)
 **Branch:** `phase-8-repair`
 **Repo:** https://github.com/a1creator284/graphone-intelligence-pipeline
 
 ## Current Status
 
-Phases 1-8 **plus Phase 12 (entity resolution)** are implemented and green:
-**286 passed, 2 deselected** (the 2 deselected are `-m integration`,
-live-network, opt-in). Baseline at session start was 249; this session added
-37 tests and broke nothing.
+Phases 1-8 plus Phase 12 (entity resolution) **plus the OpenAlex research
+source** are implemented and green: **315 passed, 2 deselected** (the 2
+deselected are `-m integration`, live-network, opt-in). Baseline at session
+start was 286; this session added 29 tests and broke none.
 
-This session did a targeted gap audit against the assessment requirements
-and then implemented the single highest-value missing capability.
+This session implemented exactly one milestone: replacing the dead Papers
+With Code research source with OpenAlex, plus a fill-forward fix to the
+research target allocation.
 
 ## What This Session Did
 
-### Gap audit (findings)
+### Milestone: OpenAlex replaces Papers With Code
 
-| # | Question | Finding |
-|---|---|---|
-| A | How does research reach 1,000 papers? | arXiv paging only; `target // 2` split across 2 adapters, one of which is dead |
-| B | Usable research sources | **1** (arXiv). PWC re-confirmed dead: 302 → `huggingface.co/papers/trending`, HTML |
-| C | PWC replacement | **OpenAlex verified HTTP 200, no key.** Semantic Scholar returns **429** unauthenticated |
-| D | Startups → 1,000 | **Not implemented.** YC Algolia endpoint now returns **403** |
-| E | Products → 1,000 | **Not implemented.** Product Hunt GraphQL needs an OAuth token |
-| F | News sources | 5 configured, 4 fetched live; volume gated by the 24h window |
-| G | Job sources | 5 configured, 4 ran live (WorkingNomads fetch-failed this run) |
-| H | Entity resolution connected? | **Was: nowhere.** `src/resolution/` was an empty stub → **fixed this session** |
-| I | Provenance per vertical | Yes for research / news / jobs (`RawDocument` + `raw_document_id` FK) |
-| J | LLM orchestrator callable by pipelines? | Built + tested, still **no production caller** |
-| K | Gemini → Groq → DeepSeek order | Enforced via `settings.llm_provider_order` default |
-| L | 413 / 429 | Implemented (`retry.py` backoff+jitter, `chunker.py` 413 split) and tested |
-| M | Six export tabs | **No export module at all** (`src/export/` still empty) |
-| N | CLI per vertical | research / news / jobs run end-to-end; startups / products do not |
+- `src/crawlers/openalex.py` — `OpenAlexAdapter`, same `SourceAdapter`
+  discover/fetch/parse interface as `ArxivAdapter`. Official REST API
+  (`api.openalex.org/works`), filtered to concept `C154945302`
+  ("Artificial intelligence"), sorted `publication_date:desc`,
+  `page`/`per-page` pagination, `select=` limited to the fields actually
+  consumed. Basic paging stops at the API's documented 10,000-result cap
+  rather than issuing requests that would 400. `per-page` clamped to 200.
+- **Polite pool:** `mailto=` is appended only when `OPENALEX_MAILTO` is set
+  (new optional setting `Settings.openalex_mailto`, documented in
+  `.env.example`). Unset → the parameter is omitted; no address is invented.
+- **Field mapping is verbatim only.** `title` (falling back to
+  `display_name`, which OpenAlex returns as the same value),
+  `authorships[].author.display_name`, `publication_date`, and the `W…` work
+  ID as `paper_external_id`. `paper_url` is chosen from URLs *present in the
+  response*, in order `doi` → `primary_location.landing_page_url` → the
+  OpenAlex work URL — never constructed from parts.
+- **`github_url`/`github_stars` are always NULL from this source.** OpenAlex
+  exposes no repository relation, so nothing is inferred. `github_stars`
+  remains the exclusive output of `GitHubEnrichmentClient`.
+- **Absent fields stay absent.** No `publication_date` → `published_date` is
+  `None`. No `authorships` → `[]`. No title or no usable URL → the record is
+  skipped, not repaired.
+- **A source failure yields zero records.** A JSON error body (OpenAlex's
+  real 400 shape has `error`/`message` and no `results`), an HTML page, or a
+  non-list `results` all raise `ParsingError`. An error page is never
+  silently treated as an empty-but-valid page.
 
-### Milestone implemented: Phase 12 — Entity Resolution
+### Registry / wiring
 
-Chosen over the PWC replacement because it was a **completely unimplemented
-assessment requirement** (req #10) that also unblocks a required export tab
-(#13, "Entity Mapping Log"), and it is fully verifiable offline. arXiv can
-page to 1,000 papers on its own, so the dead PWC adapter is a
-volume/redundancy problem, not a hard blocker.
+- `src/config/sources.py`: new `openalex` entry (`Vertical.RESEARCH`,
+  `OFFICIAL_API`). `papers_with_code` set to `enabled=False` with the
+  breakage recorded in `known_limitations` — **disabled, not deleted**, so
+  the dead-source evidence and history survive.
+- `src/pipeline/research.py`: `ADAPTER_CLASSES = [ArxivAdapter,
+  OpenAlexAdapter]`. The PWC adapter module and its own test file are
+  untouched and still pass.
+- `ArxivAdapter` was **not** modified. No compatibility issue was found.
 
-- `src/resolution/normalize.py` — pure deterministic normalization: NFKD
-  accent folding, casefold, `&`→`and`, punctuation→space, then *trailing*
-  legal-suffix stripping from a fixed list (`inc`, `llc`, `ltd`, `gmbh`, …),
-  leading-article strip, trailing-noise strip. `"Incredible AI"` keeps its
-  `Inc` because only trailing tokens are eligible.
-- `src/resolution/resolver.py` — `EntityResolver` with a 5-rung ladder:
-  `normalized_exact` (1.00) → `alias` (0.99) → `fuzzy` (score/100, rapidfuzz
-  `token_sort_ratio` ≥ 92) → `created` (1.00) → `unresolved` (0.00). Warms an
-  in-memory index from `canonical_entities` + `entity_aliases`, registers a
-  new alias row on every fuzzy hit, and writes **every** decision to
-  `entity_mapping_log`.
-- Wired into `src/pipeline/jobs.py`: every persisted `Job` now carries a real
-  `canonical_entity_id`; resolver exceptions degrade to a null link instead
-  of dropping the record. New counters on `JobsPipelineResult`:
-  `entities_resolved`, `entities_created`, `entities_unresolved`,
-  `entity_methods`.
+### Fill-forward target allocation
 
-**Anti-fabrication properties (deliberate):**
-- A false merge is worse than a false split. Threshold is high (92);
-  near-misses in the 85-92 band are **not** merged — they become separate
-  entities and the near-miss is logged as a review candidate.
-- Unusable names (empty / punctuation-only / single char) resolve to
-  `unresolved` with a null FK and confidence 0.0. Still audited, never
-  replaced with a placeholder.
-- Freshness rejection happens *before* resolution, so stale records create
-  zero phantom entities (explicitly tested).
+The old `per_adapter_target = max(1, target // len(ADAPTER_CLASSES))` split
+silently missed the global target whenever one source ran dry. Replaced with
+a minimal two-pass scheme in `run_research_pipeline` (no pipeline redesign):
+
+1. **Pass 1** — each adapter is asked for a fair share of what is *still
+   outstanding* (`ceil(remaining / adapters_left)`), so an earlier source's
+   shortfall is carried forward to later ones. Loop breaks early once the
+   target is met, so no over-collection.
+2. **Pass 2** — one bounded extra round against adapters that were *not*
+   exhausted in pass 1 (`produced >= asked_for`), with the ceiling raised by
+   the shortfall. Adapters that ran dry are skipped rather than re-fetched.
+3. Records are deduped by `source_url` across passes, so a retry cannot
+   inflate counts. If the target is still unmet, a `research_target_not_met`
+   warning is logged and the real count is reported. **Nothing is fabricated
+   to reach the target.**
 
 ## Files Changed
 
 **New**
-- `src/resolution/normalize.py`
-- `src/resolution/resolver.py`
-- `tests/test_entity_normalization.py` (17 tests)
-- `tests/test_entity_resolver.py` (16 tests)
-- `tests/test_jobs_entity_resolution.py` (4 tests)
+- `src/crawlers/openalex.py`
+- `tests/test_openalex_adapter.py` (25 tests)
+- `tests/fixtures/openalex_sample_response.json` (real captured response)
+- `tests/fixtures/openalex_sample_response_no_doi.json` (real captured
+  response, `has_doi:false`, for genuinely-null optional fields)
 
 **Modified**
-- `src/resolution/__init__.py` — was empty; now the public API surface
-- `src/pipeline/jobs.py` — resolver wired in + 4 new result counters
-- `README.md` — new "Entity resolution / deduplication (Phase 12)" section,
-  phase table updated, "Next phases" corrected with the live source probes
+- `src/config/settings.py` — added optional `openalex_mailto`
+- `src/config/sources.py` — added `openalex`; `papers_with_code`
+  `enabled=False` + breakage note
+- `src/pipeline/research.py` — OpenAlex wired in; fill-forward allocation
+- `tests/test_research_pipeline.py` — PWC mocks → OpenAlex mocks (intent of
+  every existing test preserved), plus 4 new fill-forward tests
+- `.env.example` — `OPENALEX_MAILTO`
+- `README.md` — targeted edits only (PWC section now records the
+  replacement, adapter list, source tree, next-phases item closed)
 - `CLAUDE_HANDOFF.md` — this file
 
-No other `src/` file touched. No existing test modified or deleted.
+Not touched: `src/crawlers/arxiv.py`, `src/crawlers/papers_with_code.py`,
+`src/resolution/*`, every other pipeline. No existing test deleted.
 
 ## Tests
 
 ```
 $ .venv/bin/python -m pytest -q
-286 passed, 2 deselected, 31 warnings in 8.60s
+315 passed, 2 deselected, 31 warnings in 7.99s
 ```
 
-Baseline before the change was `249 passed, 2 deselected` — verified by
-running the suite on a clean checkout before writing any code.
-
-New tests in isolation:
+Baseline before the change was `286 passed, 2 deselected`.
 
 ```
-$ .venv/bin/python -m pytest tests/test_entity_normalization.py tests/test_entity_resolver.py -q
-33 passed in 1.04s
+$ .venv/bin/python -m pytest tests/test_openalex_adapter.py -q
+25 passed in 0.69s
 
-$ .venv/bin/python -m pytest tests/test_jobs_entity_resolution.py -q
-4 passed in 0.81s
+$ .venv/bin/python -m pytest tests/test_research_pipeline.py -q
+13 passed in 2.17s
 ```
 
-Live run proving resolution executes against real network data:
+**Fixtures are real.** Both OpenAlex fixtures were captured live from
+`api.openalex.org` on 2026-09-09 with the exact query the adapter issues
+(recorded verbatim in the test module docstring). Where a test needed a
+shape the live API did not hand us (a work with no `publication_date`, a
+work with no usable URL), it *derives* it by deleting a key from the
+captured response and says so in the docstring. No invented paper metadata
+is presented as a real fixture. The error-body test uses the real 400
+payload shape captured from `/works?filter=badfilter:1`.
 
-```
-$ DATABASE_URL="sqlite+aiosqlite:///:memory:" python -m src.main --vertical jobs --target 20
-persisted: 1, rejected_stale: 206,
-entities_resolved: 1, entities_created: 1, entities_unresolved: 0,
-entity_methods: {"created": 1}
-```
-
-(206 stale rejections are the HN "Who is hiring?" comments falling outside
-the 24h window — correct behaviour, not a bug.)
+Coverage: successful parse, required-field mapping, missing optional fields
+(null `doi`, missing date, missing authorships), skip-on-missing-required,
+malformed JSON, HTML error page, OpenAlex error body, non-list `results`,
+pagination (page splitting, remainder page, 10k cap, per-page clamp),
+source URL/provenance, `mailto` on/off, registry consistency, PWC disabled,
+and 4 fill-forward tests (shortfall carried forward, bounded retry of a
+non-exhausted adapter, all-sources-dry → zero records, no extra requests
+once the target is met).
 
 ## Known Issues
 
-1. **Papers With Code is still dead.** Re-confirmed this session. Research is
-   effectively single-source (arXiv). **OpenAlex is verified reachable
-   (HTTP 200, no key)** — that is the recommended replacement. Semantic
-   Scholar returned **429** unauthenticated, so it is a worse choice.
-2. **Startups and products verticals do not exist.** Requirements #1 and #2
-   (1,000 each) are unmet. Source access has degraded since the registry was
-   written: YC Algolia → **403**, `ycombinator.com/companies/directory.json`
-   → **404**, Product Hunt GraphQL → needs OAuth. **Re-verify source access
-   before writing adapters.**
-3. **No export module.** `src/export/` is still empty; requirement #13 (six
-   tabs) is unmet. All six backing tables now exist and are populated for
-   the three live verticals.
-4. **Phase 8 has never made a live LLM call.** No API keys configured. All
-   Phase 8 tests are `respx`-mocked. Live verification remains pending.
-5. **Phase 8 still has no production caller.** The orchestrator is not
-   invoked by any pipeline.
-6. Entity resolution is wired into **jobs only**. `Startup` and `Product`
-   have the same FK column and will use the identical resolver; `News` and
-   `ResearchPaper` have no company field, so they legitimately don't need it.
-7. No `architecture.pdf` (requirement #15).
-8. No Alembic migrations; schema comes from `Base.metadata.create_all`.
-9. 31 test warnings (deprecations from `newspaper3k` / `bs4` /
-   pytest-asyncio fixture loop scope). Cosmetic.
+1. **`python -m src.main` does not exit cleanly after a run.** The pipeline
+   completes and logs its summary, then the process hangs until killed.
+   **This is pre-existing, not caused by this change** — verified by
+   `git stash`ing the working tree and reproducing the identical hang on
+   the previous commit (`baseline_exit=124` under `timeout 60`). Likely the
+   async engine/connection pool is never disposed in `src/main.py`. Worth
+   a small dedicated fix.
+2. **OpenAlex `publication_date` is a date only** (no time) and is
+   occasionally a publisher-supplied *future* date (the captured fixture
+   contains 2045-12-10 and 2041-01-01 — those are genuinely what the API
+   returned). Research records have no 24h freshness gate, so this does not
+   currently reject anything, but a future freshness rule on research would
+   need to account for it.
+3. **OpenAlex basic paging caps at 10,000 results.** Reaching 1,000 papers
+   is fine; going deeper would need cursor paging (`cursor=*` +
+   `meta.next_cursor`, both confirmed present in live responses).
+4. **The full 1,000-paper run has not been attempted** this session — only a
+   6-record live smoke test, per the session brief.
+5. Startups and products verticals still do not exist (YC Algolia → 403,
+   Product Hunt GraphQL → OAuth). Re-verify source access before building.
+6. No export module (`src/export/` still empty); requirement #13 unmet.
+7. Phase 8 has never made a live LLM call (no API keys) and still has no
+   production caller.
+8. Entity resolution is wired into jobs only (by design — research/news have
+   no company field).
+9. No `architecture.pdf` (requirement #15). No Alembic migrations.
+10. 31 test warnings (newspaper3k / bs4 / pytest-asyncio deprecations).
+    Cosmetic.
+
+## Live Verification (this session)
+
+Network egress is open. All probes were actually executed.
+
+```
+$ curl -o /dev/null -w "%{http_code}" \
+  "https://api.openalex.org/works?filter=concepts.id:C154945302&per-page=2&mailto=..."
+200   (content-type: application/json)
+```
+
+Adapter-level smoke test through the real `AsyncHttpClient`:
+
+```
+GET https://api.openalex.org/works?filter=concepts.id:C154945302&sort=publication_date:desc
+    &per-page=3&page=1&select=...&mailto=graphone-pipeline@example.com
+status 200  bytes 6423  parsed 3
+ valid: True  {"title": "Artificial Intelligence in Plant Sciences",
+               "authors": ["Dr. Nupur Prasad"],
+               "paper_url": "https://doi.org/10.5281/zenodo.17036033",
+               "paper_external_id": "W7166029900",
+               "github_url": null, "github_stars": null,
+               "published_date": "2045-12-10 00:00:00+00:00"}
+TOTAL 3
+```
+
+All 3 live records passed `validate_research_paper` unmodified, and all 3
+had `github_url`/`github_stars` null — confirming nothing is fabricated.
+
+Full pipeline live run (arXiv + OpenAlex together):
+
+```
+$ DATABASE_URL="sqlite+aiosqlite:///:memory:" OPENALEX_MAILTO=... \
+  python -m src.main --vertical research --target 6
+
+registered_sources: ["arxiv", "openalex"]
+arxiv    -> status 200, parsed 3, asked_for 3, new 3
+openalex -> status 200, parsed 3, asked_for 3, new 3
+research_pipeline_complete: target=6 discovered=2 valid_records=6
+  duplicates=0 rejected=0 github_enriched=0
+  by_source={"arxiv": 3, "openalex": 3}
+```
+
+Target met exactly, from both sources, with no fabricated rows. (The process
+then hung on exit — see Known Issue #1, pre-existing.)
 
 ## Remaining Assessment Gaps
 
@@ -155,7 +219,7 @@ the 24h window — correct behaviour, not a bug.)
 |---|---|---|
 | 1 | 1,000 startups | ❌ no pipeline |
 | 2 | 1,000 products | ❌ no pipeline |
-| 3 | 1,000 papers | ⚠️ arXiv only (single source) |
+| 3 | 1,000 papers | ⚠️ 2 live sources (arXiv + OpenAlex); full 1,000 run not yet attempted |
 | 4 | ≥5 news sources | ✅ 5 configured |
 | 5 | ≥5 job sources | ✅ 5 configured |
 | 6 | 24h freshness | ✅ enforced + live-proven |
@@ -172,49 +236,48 @@ the 24h window — correct behaviour, not a bug.)
 
 ## Next Task
 
-**Replace the dead Papers With Code adapter with OpenAlex.** It is now the
-highest-priority *unblocked* gap: requirement #3 is degraded to a single
-source, and OpenAlex is the only verified-reachable, key-free replacement.
+**Phase 14: the six-tab export module** (`src/export/`, requirement #13).
 
-1. `curl "https://api.openalex.org/works?filter=concepts.id:C154945302&per-page=2"`
-   to re-confirm reachability and capture the real response shape.
-2. Add `src/crawlers/openalex.py` implementing the same adapter interface as
-   `src/crawlers/arxiv.py` (mirror `papers_with_code.py`'s structure).
-   OpenAlex asks for a `mailto=` param for the polite pool — include it.
-3. Register it in `src/config/sources.py` (`Vertical.RESEARCH`,
-   `OFFICIAL_API`) and mark `papers_with_code` `enabled=False` with a note
-   rather than deleting it — the dead-source handling is good evidence.
-4. Save a real captured response to `tests/fixtures/` and add
-   `tests/test_openalex_adapter.py` mirroring
-   `tests/test_papers_with_code_adapter.py`.
-5. Swap it into `ADAPTER_CLASSES` in `src/pipeline/research.py`.
-   ⚠️ `per_adapter_target` is a naive `target // len(ADAPTER_CLASSES)` split —
-   if one source runs dry the target is silently missed. Consider making the
-   split fill-forward.
-6. **Do not fabricate any paper metadata.** Fields OpenAlex doesn't supply
-   (e.g. a GitHub repo link) stay `NULL`.
+It is the largest remaining unmet requirement, it is fully self-contained,
+it needs no network access, and all six backing tables already exist and are
+populated for the three live verticals (research / news / jobs), including
+`entity_mapping_log` from Phase 12. Low risk, high assessment value.
 
-After that, the biggest remaining wins are the six-tab export (#13) and
-`architecture.pdf` (#15) — both are self-contained and low-risk.
+Second choice if export is deferred: a real 1,000-paper research run to
+prove requirement #3 end-to-end (now plausible with two live sources and
+fill-forward allocation). Budget for arXiv's ~1 req/3s politeness ask — it
+will take several minutes, and the CLI's non-exit bug (Known Issue #1)
+should be fixed first so the run terminates cleanly.
 
 ## Important Decisions
 
-- **Chose entity resolution over the PWC replacement**, contradicting the
-  previous handoff's "next task". Rationale: entity resolution was a
-  requirement with *zero* implementation and it unblocks a required export
-  tab, whereas arXiv alone can still page to 1,000 papers — so PWC is a
-  redundancy gap, not a blocker. The task brief explicitly permitted
-  overriding the old handoff on priority grounds.
-- **Set the fuzzy threshold at 92, not lower.** Aggressive merging inflates
-  apparent dedup quality while silently corrupting the dataset. Splitting is
-  visible in the mapping log and reversible.
-- **Logged unresolved names instead of skipping them.** An empty audit row
-  is more honest than a missing one and keeps the mapping-log tab complete.
-- **Made resolution non-fatal.** A resolver exception nulls the FK and lets
-  the job persist. Losing verified job data over a name-matching failure
-  would be the wrong trade.
-- **Left the research/news pipelines untouched.** Neither has a company
-  field, so wiring the resolver there would add risk with no benefit.
+- **Disabled Papers With Code instead of deleting it.** The adapter, its
+  tests, and its registry entry remain; only `enabled` flipped to `False`
+  with the breakage documented. Deleting it would erase the evidence that
+  the pipeline handles a dead upstream correctly.
+- **Chose OpenAlex over Semantic Scholar / HuggingFace Papers.** OpenAlex
+  answered 200 with no key; Semantic Scholar 429s unauthenticated. Verified
+  live, not assumed.
+- **`paper_url` is selected, never constructed.** DOI → landing page →
+  OpenAlex work URL, all values literally present in the response. A work
+  with none of the three is dropped rather than given a synthesized URL.
+- **Treated a missing `results` key as a hard `ParsingError`.** Returning
+  `[]` for an error body would let a broken source look like a quiet source
+  — precisely how a dead PWC could have gone unnoticed.
+- **Fill-forward is two bounded passes, not a scheduler.** A general
+  work-stealing collector would be a real redesign; two passes plus URL
+  dedup fixes the actual defect (target missed when a source runs dry) with
+  ~40 lines and no change to the adapter interface.
+- **Retries only adapters that were not exhausted.** Re-asking a dry source
+  just re-downloads the same pages. The retry ceiling is the original ask
+  plus the shortfall, and dedup guarantees a retry can never inflate counts.
+- **Kept `arxiv.py` byte-identical.** No compatibility issue surfaced, and
+  the brief said not to touch it otherwise.
+- **Rewrote the existing research-pipeline test mocks rather than adding a
+  parallel set.** The tests assert pipeline behaviour, not PWC specifically;
+  every original assertion's intent is preserved, with counts updated for
+  the new fixture (notably `github_enriched` drops 2 → 1, because OpenAlex
+  contributes no repo links at all).
 
 ## Environment / Dependencies
 
@@ -241,18 +304,16 @@ cd /home/user/webapp
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# Confirm the baseline is still green (expect: 286 passed, 2 deselected)
+# Confirm the baseline is still green (expect: 315 passed, 2 deselected)
 .venv/bin/python -m pytest -q
 
-# Re-probe sources before building against them
+# Re-probe the live research sources
 curl -s -o /dev/null -w "openalex: %{http_code}\n" \
   "https://api.openalex.org/works?filter=concepts.id:C154945302&per-page=2"
-curl -sL -o /dev/null -w "pwc: %{http_code} -> %{url_effective}\n" \
-  https://paperswithcode.com/api/v1/papers/
 
-# Live smoke tests
-DATABASE_URL="sqlite+aiosqlite:///:memory:" .venv/bin/python -m src.main --vertical research --target 2
-DATABASE_URL="sqlite+aiosqlite:///:memory:" .venv/bin/python -m src.main --vertical jobs --target 20
+# Live smoke test (NB: the process will not exit on its own -- Known Issue #1)
+DATABASE_URL="sqlite+aiosqlite:///:memory:" OPENALEX_MAILTO="you@example.com" \
+  timeout 60 .venv/bin/python -m src.main --vertical research --target 6
 
-# Then start the next task: src/crawlers/openalex.py
+# Then start the next task: src/export/ (six-tab export, requirement #13)
 ```
