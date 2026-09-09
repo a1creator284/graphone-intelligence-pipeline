@@ -21,14 +21,20 @@ implemented and test-verified as of this commit (286 passing tests):**
 | 7 | Jobs pipeline: 5 API/Sitemap sources, JSON-LD, validation, provenance | ✅ Done |
 | 8 | LLM orchestration: 3 providers, fallback, chunking, 413 handling, metrics | ✅ Done |
 | 12 | Entity resolution: normalization, aliases, fuzzy matching, mapping log | ✅ Done |
-| 9-11 | Startups + products pipelines | ⏳ Not yet built |
+| 9-11 | Startups + products pipelines | ✅ Done |
 | 13-16 | Quality metrics, six-tab export, architecture.pdf, final audit | ⏳ Not yet built |
 
-`python -m src.main --vertical research` and `--vertical news` **actually run**
-end-to-end (discovery → extraction/enrichment → schema validation →
-idempotent Postgres/SQLite persistence), verified against live networks — see
-"Live verification" below. Startups/products verticals still just report their
-registered sources; those adapters land in Phases 9-11.
+`--vertical research`, `news`, `jobs`, `startups` and `products` **actually
+run** end-to-end (discovery → extraction/enrichment → schema validation →
+idempotent Postgres/SQLite persistence) — see "Live verification" below.
+
+The products vertical collects from three official, unauthenticated public
+APIs, in this fixed order: `huggingface_spaces` (primary), `openrouter_models`,
+`huggingface_models`. `--target` is a **ceiling, not a quota**: records are
+only ever those a source actually returned, deduplicated on the source's own
+URL and artifact id, and a shortfall is logged as `products_target_not_met`
+rather than padded. Product Hunt remains registered but disabled — it requires
+an OAuth token this deployment does not hold and has no adapter.
 
 ## Live verification (updated — network egress is now available)
 

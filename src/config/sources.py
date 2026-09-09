@@ -210,6 +210,70 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
             "browser-visible and YC may rotate it (override via YC_ALGOLIA_API_KEY)."
         ),
     ),
+    # --- PRODUCTS -----------------------------------------------------------
+    # Order here mirrors src/pipeline/products.ADAPTER_CLASSES, and each `name`
+    # matches its adapter's `name` attribute exactly, so the registry and the
+    # runtime cannot drift apart.
+    SourceDefinition(
+        name="huggingface_spaces",
+        vertical=Vertical.PRODUCTS,
+        base_url="https://huggingface.co/api/spaces",
+        discovery=DiscoveryMechanism.OFFICIAL_API,
+        parsing_strategy=(
+            "Official public Hub REST listing (JSON array, full=true) -> deployed, "
+            "publicly-listed AI applications. product_name from cardData.title, else the "
+            "repo segment of the Hub id; startup_name from the `author` owner field."
+        ),
+        date_strategy="not applicable (entity data, not time-series); createdAt/lastModified kept verbatim in metadata_json",
+        rate_limit_notes=(
+            "No auth, no API key. Cursor-paged via the `Link: rel=\"next\"` response header "
+            "(the deprecated `skip=` offset is deliberately not used); bounded concurrency "
+            "via AsyncHttpClient."
+        ),
+        known_limitations=(
+            "The Hub publishes no price for Spaces, so pricing_model is always NULL from this "
+            "source -- it is never keyword-derived from a description. Spaces with neither an "
+            "author nor an owner segment are skipped rather than attributed to an invented vendor."
+        ),
+    ),
+    SourceDefinition(
+        name="openrouter_models",
+        vertical=Vertical.PRODUCTS,
+        base_url="https://openrouter.ai/api/v1/models",
+        discovery=DiscoveryMechanism.OFFICIAL_API,
+        parsing_strategy=(
+            "Official public model catalogue (JSON {data: [...]}) -> commercial AI model "
+            "products. product_name from `name` verbatim; startup_name from the \"Vendor: Model\" "
+            "prefix, else the owner segment of the model id."
+        ),
+        date_strategy="not applicable (catalogue data); the numeric `created` field is kept verbatim in metadata_json",
+        rate_limit_notes="Public, unauthenticated listing endpoint; constant page size per run, bounded concurrency.",
+        known_limitations=(
+            "The only products source publishing real prices, so the only one that may populate "
+            "pricing_model (FREE when every published price is 0, PAID otherwise, NULL when the "
+            "source published no usable pricing). When a model declares a hugging_face_id, that "
+            "repo id becomes the dedup_key so the same artifact listed by Hugging Face collapses "
+            "to one row instead of being counted twice."
+        ),
+    ),
+    SourceDefinition(
+        name="huggingface_models",
+        vertical=Vertical.PRODUCTS,
+        base_url="https://huggingface.co/api/models",
+        discovery=DiscoveryMechanism.OFFICIAL_API,
+        parsing_strategy=(
+            "Same official Hub REST surface as huggingface_spaces, sorted by the Hub's own "
+            "`downloads` metric -> published AI model products. product_name is the repo segment "
+            "of the Hub id (model repos rarely carry cardData.title)."
+        ),
+        date_strategy="not applicable (entity data); createdAt/lastModified kept verbatim in metadata_json",
+        rate_limit_notes="No auth; same `Link` cursor paging and bounded concurrency as huggingface_spaces.",
+        known_limitations=(
+            "No published price, so pricing_model is always NULL. Runs last of the three products "
+            "sources, so a model already contributed by openrouter_models under the same "
+            "`hf-model:<repo id>` dedup_key is not counted twice."
+        ),
+    ),
     SourceDefinition(
         name="producthunt_ai_products",
         vertical=Vertical.PRODUCTS,
@@ -217,8 +281,16 @@ SOURCE_REGISTRY: list[SourceDefinition] = [
         discovery=DiscoveryMechanism.OFFICIAL_API,
         parsing_strategy="GraphQL API, topic=artificial-intelligence",
         date_strategy="featuredAt field, ISO-8601",
-        rate_limit_notes="Requires OAuth token; token-bucket rate limit enforced by API.",
-        known_limitations="pricingModel is not a native field; derived deterministically from tagline/description keywords, or left null if ambiguous (never LLM-guessed per Section 24).",
+        rate_limit_notes="Requires an OAuth developer token; token-bucket rate limit enforced by API.",
+        known_limitations=(
+            "DISABLED: there is no adapter for this source in src/crawlers/ and the API requires "
+            "an OAuth bearer token that this deployment does not hold, so enabling it would "
+            "advertise a capability the pipeline cannot execute. Kept as documentation of the "
+            "evaluated option; the three unauthenticated sources above cover the vertical. "
+            "Original limitation: pricingModel is not a native field and would have to be derived "
+            "from tagline/description keywords, which Section 24 forbids."
+        ),
+        enabled=False,
     ),
 ]
 

@@ -5,9 +5,8 @@ python -m src.main --vertical research --workers 50
 python -m src.main --vertical all
 python -m src.main --export
 
-Status: --vertical research, news, jobs and startups are wired end-to-end
-(discovery -> validation -> database). --vertical products still only reports
-its registered sources; that adapter lands in a later phase.
+Status: --vertical research, news, jobs, startups and products are wired
+end-to-end (discovery -> validation -> database).
 See README "Project status".
 """
 from __future__ import annotations
@@ -185,6 +184,44 @@ async def _run_startups(args: argparse.Namespace) -> None:
         )
 
 
+async def _run_products(args: argparse.Namespace) -> None:
+    """Run the products vertical pipeline (Hugging Face Hub + OpenRouter)."""
+    from src.config.settings import get_settings
+    from src.pipeline.products import run_products_pipeline
+    from src.storage.database import get_session_factory
+
+    settings = get_settings()
+    async with engine_scope() as engine:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        factory = get_session_factory()
+        async with factory() as session:
+            result = await run_products_pipeline(
+                session,
+                target=args.target or 1000,
+                max_concurrency=args.workers or settings.max_concurrency,
+            )
+    logger.info(
+        "products_run_summary",
+        target=result.target,
+        discovered=result.discovered,
+        valid_records=result.valid_records,
+        duplicates=result.duplicates,
+        cross_source_duplicates=result.cross_source_duplicates,
+        rejected=result.rejected,
+        entities_resolved=result.entities_resolved,
+        by_source=result.by_source,
+    )
+    if result.target and result.valid_records < result.target:
+        logger.info(
+            "target_not_fully_met",
+            target=result.target,
+            valid_records=result.valid_records,
+            note="Reported honestly; no records are fabricated to reach the target.",
+        )
+
+
 async def _run(args: argparse.Namespace) -> int:
     if args.export:
         logger.info("export_not_yet_wired", note="Export module lands in Phase 13")
@@ -211,7 +248,15 @@ async def _run(args: argparse.Namespace) -> int:
             await _run_jobs(args)
         elif vertical == Vertical.STARTUPS and not args.dry_run:
             await _run_startups(args)
-        elif vertical not in (Vertical.RESEARCH, Vertical.NEWS, Vertical.JOBS, Vertical.STARTUPS):
+        elif vertical == Vertical.PRODUCTS and not args.dry_run:
+            await _run_products(args)
+        elif vertical not in (
+            Vertical.RESEARCH,
+            Vertical.NEWS,
+            Vertical.JOBS,
+            Vertical.STARTUPS,
+            Vertical.PRODUCTS,
+        ):
             logger.info(
                 "vertical_not_yet_wired",
                 vertical=vertical.value,
