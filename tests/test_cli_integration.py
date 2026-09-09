@@ -151,3 +151,93 @@ async def test_cli_news_vertical_integration(capsys, db_session):
             table_check = await db_session.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='news'"))
             assert table_check.scalar() == "news"
 
+
+
+@pytest.mark.asyncio
+async def test_cli_startups_vertical_is_wired(capsys, db_session):
+    """`--vertical startups --target 5 --workers 7` must execute the existing
+    startups pipeline (not print `vertical_not_yet_wired`), forwarding
+    --target and --workers through to `run_startups_pipeline`.
+    """
+    from src.main import _run, build_parser
+    from src.pipeline.startups import StartupsPipelineResult
+
+    called: dict[str, object] = {}
+
+    async def fake_pipeline(session, *, target=1000, max_concurrency=20, **kwargs):
+        called["session"] = session
+        called["target"] = target
+        called["max_concurrency"] = max_concurrency
+        return StartupsPipelineResult(
+            target=target,
+            discovered=1,
+            valid_records=target,
+            entities_resolved=target,
+            by_source={"ycombinator_directory": target},
+        )
+
+    class DummyEngine:
+        def begin(self):
+            class DummyContextManager:
+                async def __aenter__(self):
+                    class DummyConn:
+                        async def run_sync(self, func):
+                            pass
+
+                    return DummyConn()
+
+                async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    pass
+
+            return DummyContextManager()
+
+    @asynccontextmanager
+    async def dummy_engine_scope(database_url=None):
+        yield DummyEngine()
+
+    class DummyFactory:
+        def __call__(self):
+            class DummyContextManager:
+                async def __aenter__(self):
+                    return db_session
+
+                async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    pass
+
+            return DummyContextManager()
+
+    with patch("sys.argv", ["python -m src.main", "--vertical", "startups", "--target", "5", "--workers", "7"]), \
+            patch("src.pipeline.startups.run_startups_pipeline", side_effect=fake_pipeline), \
+            patch("src.main.engine_scope", side_effect=dummy_engine_scope), \
+            patch("src.storage.database.get_session_factory", return_value=DummyFactory()):
+        args = build_parser().parse_args()
+        exit_code = await _run(args)
+
+    assert exit_code == 0
+    assert called["target"] == 5
+    assert called["max_concurrency"] == 7
+    assert called["session"] is db_session
+
+    stdout = capsys.readouterr().out
+    assert "vertical_not_yet_wired" not in stdout
+    assert "startups_run_summary" in stdout
+
+
+@pytest.mark.asyncio
+async def test_cli_startups_dry_run_does_not_execute_pipeline(capsys):
+    """`--dry-run` must report the registered startups sources without
+    invoking the pipeline or touching the database."""
+    from src.main import _run, build_parser
+    from unittest.mock import AsyncMock
+
+    with patch("sys.argv", ["python -m src.main", "--vertical", "startups", "--dry-run"]), \
+            patch("src.pipeline.startups.run_startups_pipeline", new_callable=AsyncMock) as mock_pipeline:
+        args = build_parser().parse_args()
+        exit_code = await _run(args)
+
+    assert exit_code == 0
+    mock_pipeline.assert_not_awaited()
+
+    stdout = capsys.readouterr().out
+    assert "ycombinator_directory" in stdout
+    assert "startups_run_summary" not in stdout

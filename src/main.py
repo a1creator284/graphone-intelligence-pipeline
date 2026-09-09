@@ -5,10 +5,10 @@ python -m src.main --vertical research --workers 50
 python -m src.main --vertical all
 python -m src.main --export
 
-Status: --vertical research is wired end-to-end (arXiv + Papers With Code +
-GitHub enrichment -> validation -> Postgres). Other verticals (news, jobs,
-startups, products) report their registered sources but do not yet crawl --
-those adapters land in Phases 6-11. See README "Project status".
+Status: --vertical research, news, jobs and startups are wired end-to-end
+(discovery -> validation -> database). --vertical products still only reports
+its registered sources; that adapter lands in a later phase.
+See README "Project status".
 """
 from __future__ import annotations
 
