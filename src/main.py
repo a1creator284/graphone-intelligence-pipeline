@@ -147,7 +147,7 @@ async def _run_jobs(args: argparse.Namespace) -> None:
             "target_not_fully_met",
             target=result.target,
             valid_records=result.valid_records,
-            note="Jobs adapters will be wired in subsequent tasks.",
+            note="Only genuine, timezone-dated Jobs inside the strict 24h window are stored; no padding.",
         )
 
 
