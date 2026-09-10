@@ -2,14 +2,14 @@
 News vertical pipeline (Phase 6).
 
 Orchestrates news ingestion from five AI news sources (HackerNews, TechCrunch,
-The Verge, MIT Tech Review, Synced Review) following the existing research
+The Verge, MIT Tech Review, The Decoder) following the existing research
 pipeline architecture.
 
 Workflow:
 1. Wire five news source adapters
 2. Run each adapter via worker pool (discover -> fetch -> parse)
 3. Validate each ParsedRecord (schema validation)
-4. Check freshness (24-hour window with clock skew tolerance)
+4. Check freshness (strict 24-hour window; no future timestamps)
 5. Persist raw HTML (provenance) and validated records (deduplication)
 
 Run via `python -m src.main --vertical news`.
@@ -22,11 +22,12 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.logging import get_logger
-from src.config.settings import get_settings
+from src.config.sources import Vertical, get_sources_for_vertical
 from src.crawlers.hackernews import HackerNewsAIAdapter
 from src.crawlers.http import AsyncHttpClient
 from src.crawlers.mitreview import MITTechReviewAIAdapter
-from src.crawlers.synced import SyncedReviewAdapter
+from src.crawlers.thedecoder import TheDecoderAdapter
+from src.errors import BlockedSourceError, PipelineError
 from src.crawlers.techcrunch import TechCrunchAIAdapter
 from src.crawlers.theverge import TheVergeAIAdapter
 from src.pipeline.workers import run_adapter
@@ -42,7 +43,7 @@ ADAPTER_CLASSES = [
     TechCrunchAIAdapter,
     TheVergeAIAdapter,
     MITTechReviewAIAdapter,
-    SyncedReviewAdapter,
+    TheDecoderAdapter,
 ]
 
 
@@ -65,6 +66,9 @@ class NewsPipelineResult:
     blocked: int = 0
     rejection_reasons: list[str] = field(default_factory=list)
     by_source: dict[str, int] = field(default_factory=dict)
+    persisted_by_source: dict[str, int] = field(default_factory=dict)
+    source_errors: dict[str, list[str]] = field(default_factory=dict)
+    discovery_duplicates: int = 0
 
 
 async def run_news_pipeline(
@@ -90,13 +94,19 @@ async def run_news_pipeline(
     1. Wire all 5 news source adapters
     2. Run each adapter via worker pool (discover -> fetch -> parse)
     3. Validate each ParsedRecord (schema validation)
-    4. Check freshness (24-hour window with clock skew tolerance)
+    4. Check freshness (strict 24-hour window; no future timestamps)
     5. Persist raw HTML (provenance) and validated records (deduplication)
     """
     if reference_time is None:
         reference_time = datetime.now(timezone.utc)
 
-    settings = get_settings()
+    if reference_time.tzinfo is None:
+        raise ValueError("reference_time must be timezone-aware")
+    reference_time = reference_time.astimezone(timezone.utc)
+    if target < 1 or max_concurrency < 1:
+        raise ValueError("target and max_concurrency must be positive")
+    enabled = {s.name for s in get_sources_for_vertical(Vertical.NEWS)}
+    adapter_classes = [cls for cls in ADAPTER_CLASSES if cls.name in enabled]
     result = NewsPipelineResult(target=target)
 
     # Repositories for persistence (following research pipeline pattern)
@@ -111,35 +121,52 @@ async def run_news_pipeline(
         reference_time=reference_time.isoformat(),
         target=target,
         max_concurrency=max_concurrency,
-        clock_skew_tolerance_seconds=settings.clock_skew_tolerance_seconds,
-        freshness_window_hours=settings.freshness_window_hours,
+        clock_skew_tolerance_seconds=0,
+        freshness_window_hours=24,
     )
 
     async with AsyncHttpClient(max_concurrency=max_concurrency) as http_client:
         # Task 9.1: Wire news source adapters
         # Split target evenly across adapters (following research pipeline pattern)
-        per_adapter_target = max(1, target // len(ADAPTER_CLASSES))
-
-        adapters = [
-            HackerNewsAIAdapter(http_client, reference_time=reference_time),
-            TechCrunchAIAdapter(http_client, reference_time=reference_time),
-            TheVergeAIAdapter(http_client, reference_time=reference_time),
-            MITTechReviewAIAdapter(http_client, reference_time=reference_time),
-            SyncedReviewAdapter(http_client, reference_time=reference_time),
-        ]
+        if not adapter_classes:
+            return result
+        per_adapter_target = max(1, target // len(adapter_classes))
+        adapters = [cls(http_client, reference_time=reference_time) for cls in adapter_classes]
 
         # Run each adapter and collect all records
         all_records = []
         for adapter in adapters:
-            stats, records = await run_adapter(
-                adapter,
-                max_concurrency=max_concurrency,
-                max_items=per_adapter_target,
-            )
+            result.by_source[adapter.name] = 0
+            result.persisted_by_source[adapter.name] = 0
+            try:
+                stats, records = await run_adapter(
+                    adapter,
+                    max_concurrency=max_concurrency,
+                    max_items=per_adapter_target,
+                )
+            except PipelineError as exc:
+                # Discovery happens before article tasks in these single-response adapters.
+                # A broken feed/API must not abort the other News sources.
+                result.source_errors[adapter.name] = [str(exc)]
+                if isinstance(exc, BlockedSourceError):
+                    result.blocked += 1
+                else:
+                    result.fetch_failed += 1
+                logger.warning("news_source_failed", source=adapter.name, error=str(exc))
+                await error_repo.record(
+                    source_name=adapter.name, url=getattr(adapter, "feed_url", None),
+                    error_category=type(exc).__name__, message=str(exc), context={"stage": "discovery"},
+                )
+                continue
 
             # Aggregate stats from worker pool
             result.discovered += stats.discovered
             result.fetched += stats.fetched
+            result.parsed += len(records)
+            result.extraction_failed += max(0, stats.fetched - stats.parsed_records - stats.fetch_failed)
+            result.discovery_duplicates += stats.skipped_duplicate
+            if stats.errors:
+                result.source_errors[adapter.name] = stats.errors
             result.fetch_failed += stats.fetch_failed
             result.blocked += stats.blocked
             result.by_source[adapter.name] = len(records)
@@ -162,6 +189,7 @@ async def run_news_pipeline(
             # Extract metadata from ParsedRecord
             data = dict(record.data)
             data["source_name"] = record.source_name
+            data["url"] = record.source_url
 
             # Check if extraction failed (anti-hallucination: no full_text → reject)
             if data.get("extracted_metadata", {}).get("extraction_failed"):
@@ -204,8 +232,8 @@ async def run_news_pipeline(
             is_fresh_result, rejection_reason = is_fresh(
                 validated.published_at,
                 reference_time,
-                window_hours=settings.freshness_window_hours,
-                clock_skew_tolerance_seconds=settings.clock_skew_tolerance_seconds,
+                window_hours=24,
+                clock_skew_tolerance_seconds=0,
             )
 
             if not is_fresh_result:
@@ -220,7 +248,7 @@ async def run_news_pipeline(
                         source=record.source_name,
                         published_at=validated.published_at.isoformat(),
                         age_hours=round(age_hours, 1),
-                        freshness_window_hours=settings.freshness_window_hours,
+                        freshness_window_hours=24,
                         reason="stale_record",
                     )
                 else:
@@ -234,7 +262,7 @@ async def run_news_pipeline(
                         published_at=validated.published_at.isoformat(),
                         reference_time=reference_time.isoformat(),
                         delta_seconds=round(delta_seconds, 0),
-                        tolerance_seconds=settings.clock_skew_tolerance_seconds,
+                        tolerance_seconds=0,
                         reason="future_dated",
                     )
 
@@ -265,6 +293,7 @@ async def run_news_pipeline(
                 inserted = await news_repo.upsert(**payload)
                 if inserted:
                     result.valid_records += 1
+                    result.persisted_by_source[record.source_name] = result.persisted_by_source.get(record.source_name, 0) + 1
                     # Task 9.3: Log successful persistence (optional, can be noisy)
                     logger.debug(
                         "record_persisted",
@@ -314,6 +343,9 @@ async def run_news_pipeline(
         blocked=result.blocked,
         duplicate_skipped=result.duplicates,
         by_source=result.by_source,
+        persisted_by_source=result.persisted_by_source,
+        source_errors=result.source_errors,
+        discovery_duplicates=result.discovery_duplicates,
     )
 
     return result

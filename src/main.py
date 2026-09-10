@@ -72,10 +72,7 @@ async def _run_research(args: argparse.Namespace) -> None:
 
 
 async def _run_news(args: argparse.Namespace) -> None:
-    """Run the news vertical pipeline (Phase 6 foundation).
-
-    Full adapter implementation will be added in subsequent tasks.
-    """
+    """Run enabled News sources with strict publication freshness and provenance."""
     from src.config.settings import get_settings
     from src.pipeline.news import run_news_pipeline
     from src.storage.database import get_session_factory
@@ -101,13 +98,20 @@ async def _run_news(args: argparse.Namespace) -> None:
         rejected=result.rejected,
         extraction_failed=result.extraction_failed,
         by_source=result.by_source,
+        persisted_by_source=result.persisted_by_source,
+        source_errors=result.source_errors,
+        stale_records=result.stale_records,
+        invalid_records=result.invalid_records,
+        future_dated_records=result.future_dated_records,
+        fetch_failed=result.fetch_failed,
+        blocked=result.blocked,
     )
     if result.target and result.valid_records < result.target:
         logger.info(
             "target_not_fully_met",
             target=result.target,
             valid_records=result.valid_records,
-            note="News adapters and extraction will be wired in subsequent tasks.",
+            note="Only verified fresh articles are stored; source shortfalls are never padded.",
         )
 
 

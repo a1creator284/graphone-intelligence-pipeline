@@ -23,7 +23,10 @@ from src.config.logging import get_logger
 from src.crawlers.base import DiscoveredUrl, ParsedRecord, SourceAdapter
 from src.crawlers.http import AsyncHttpClient, FetchResult
 from src.extraction.articles import ArticleExtractor
-from src.extraction.dates import extract_publication_date, to_utc
+from pydantic import HttpUrl
+
+from src.errors import ParsingError
+from src.validation.news_dates import extract_news_publication
 
 logger = get_logger(component="rss_news_adapter")
 
@@ -53,11 +56,17 @@ class RSSNewsAdapter(SourceAdapter):
         DateEngine priority chain.
         """
         fetch_result = await self.http_client.get(self.feed_url)
+        if fetch_result.status_code != 200:
+            raise ParsingError(f"HTTP {fetch_result.status_code} from {self.feed_url}")
         feed = feedparser.parse(fetch_result.text)
+        if not feed.version or feed.bozo:
+            raise ParsingError(f"Invalid RSS/Atom feed from {self.feed_url}")
 
         for entry in feed.entries:
             link = entry.get("link")
-            if not link:
+            try:
+                HttpUrl(link)
+            except (ValueError, TypeError):
                 continue
 
             title = entry.get("title")
@@ -67,6 +76,7 @@ class RSSNewsAdapter(SourceAdapter):
             yield DiscoveredUrl(
                 url=link,
                 metadata={
+                    "discovery_url": self.feed_url,
                     "rss_title": title,
                     "rss_pubDate": pub_date,
                     "rss_description": description,
@@ -75,7 +85,10 @@ class RSSNewsAdapter(SourceAdapter):
 
     async def fetch(self, discovered: DiscoveredUrl) -> FetchResult:
         """Fetch the article page HTML for full-text extraction."""
-        return await self.http_client.get(discovered.url)
+        result = await self.http_client.get(discovered.url)
+        if result.status_code != 200:
+            raise ParsingError(f"HTTP {result.status_code} from {discovered.url}")
+        return result
 
     async def parse(
         self, fetch_result: FetchResult, discovered: DiscoveredUrl
@@ -103,15 +116,13 @@ class RSSNewsAdapter(SourceAdapter):
 
         # --- Publication date extraction (Requirement 3) ---
         rss_pub_date = discovered.metadata.get("rss_pubDate")
-        published_at = extract_publication_date(
-            html=html,
-            structured_value=rss_pub_date,
-            reference_time=self.reference_time,
-        )
+        published_at, date_candidates = extract_news_publication(html, feed_date=rss_pub_date)
 
         # --- Build extracted_metadata (Requirement 17) ---
         truncated = len(extracted_text) > ArticleExtractor.MAX_CONTENT_LENGTH
         extracted_metadata: dict = {
+            "source_url": source_url,
+            "discovery_url": discovered.metadata.get("discovery_url", self.feed_url),
             "full_text": extracted_text,
             "truncated": truncated,
             "extraction_library": "trafilatura",  # primary; fallback noted in ArticleExtractor logs
@@ -126,10 +137,7 @@ class RSSNewsAdapter(SourceAdapter):
             "published_at": published_at,
             "full_text_location": "inline:extracted_metadata.full_text",
             "extracted_metadata": extracted_metadata,
-            "publication_date_candidates": {
-                "rss_pubDate": rss_pub_date,
-                "selected": "rss_pubDate" if rss_pub_date and published_at else None,
-            },
+            "publication_date_candidates": date_candidates,
         }
 
         return [

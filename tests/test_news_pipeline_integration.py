@@ -72,7 +72,7 @@ async def test_pipeline_runs_all_five_adapters(db_session: AsyncSession, referen
         assert "techcrunch_ai_rss" in result.by_source
         assert "theverge_ai_rss" in result.by_source
         assert "mit_technology_review_ai_rss" in result.by_source
-        assert "synced_review_rss" in result.by_source
+        assert "thedecoder_rss" in result.by_source
 
 
 @pytest.mark.asyncio

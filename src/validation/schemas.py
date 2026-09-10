@@ -113,15 +113,16 @@ class NewsRecord(BaseModel):
             raise ValueError("full_text_location must not be blank/whitespace-only")
         return stripped
 
-    @field_validator("published_at")
+    @field_validator("published_at", mode="before")
     @classmethod
-    def _published_at_utc(cls, v: datetime) -> datetime:
-        """Normalize published_at to UTC timezone-aware datetime."""
-        if v.tzinfo is None:
-            # Assume UTC for naive datetimes
-            return v.replace(tzinfo=timezone.utc)
-        # Convert to UTC if already timezone-aware
-        return v.astimezone(timezone.utc)
+    def _published_at_utc(cls, v: object) -> datetime:
+        from src.validation.news_dates import parse_news_timestamp
+
+        parsed = parse_news_timestamp(v)
+        if parsed is None:
+            raise ValueError("published_at must be a complete timezone-aware publication timestamp")
+        return parsed
+
 
 
 def validate_news_record(data: dict) -> tuple[NewsRecord | None, str | None]:
