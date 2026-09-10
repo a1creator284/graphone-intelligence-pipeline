@@ -154,7 +154,7 @@ async def run_news_pipeline(
                     result.fetch_failed += 1
                 logger.warning("news_source_failed", source=adapter.name, error=str(exc))
                 await error_repo.record(
-                    source_name=adapter.name, url=getattr(adapter, "feed_url", None),
+                    source_name=adapter.name, url=getattr(adapter, "feed_url", getattr(adapter, "BASE_URL", None)),
                     error_category=type(exc).__name__, message=str(exc), context={"stage": "discovery"},
                 )
                 continue
@@ -163,7 +163,7 @@ async def run_news_pipeline(
             result.discovered += stats.discovered
             result.fetched += stats.fetched
             result.parsed += len(records)
-            result.extraction_failed += max(0, stats.fetched - stats.parsed_records - stats.fetch_failed)
+            result.extraction_failed += getattr(adapter, "extraction_failed", 0)
             result.discovery_duplicates += stats.skipped_duplicate
             if stats.errors:
                 result.source_errors[adapter.name] = stats.errors
@@ -285,6 +285,12 @@ async def run_news_pipeline(
 
             # Prepare payload for persistence
             payload = validated.model_dump(exclude={"schema_version", "record_type"})
+            payload["extracted_metadata"] = {
+                **payload["extracted_metadata"],
+                "source_url": record.source_url,
+                "source_name": record.source_name,
+                "publication_date_candidates": data.get("publication_date_candidates", {}),
+            }
             payload["raw_document_id"] = raw_document_id
             payload["collected_at"] = reference_time
 

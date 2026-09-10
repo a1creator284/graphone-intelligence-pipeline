@@ -47,6 +47,7 @@ class RSSNewsAdapter(SourceAdapter):
     def __init__(self, http_client: AsyncHttpClient, *, reference_time: datetime | None = None):
         super().__init__(http_client)
         self.reference_time = reference_time or datetime.now(timezone.utc)
+        self.extraction_failed = 0
 
     async def discover(self) -> AsyncIterator[DiscoveredUrl]:
         """Fetch and parse the RSS feed, yielding one DiscoveredUrl per item.
@@ -104,6 +105,7 @@ class RSSNewsAdapter(SourceAdapter):
         # --- Full-text extraction (Requirement 2) ---
         extracted_text = ArticleExtractor.extract_text(html, source_url)
         if extracted_text is None:
+            self.extraction_failed += 1
             logger.warning(
                 "extraction_failed",
                 url=source_url,
