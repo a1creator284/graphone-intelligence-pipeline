@@ -248,3 +248,43 @@ async def test_parse_empty_page():
     
     records = await adapter.parse(fetch_result, DiscoveredUrl(url="x"))
     assert len(records) == 0
+
+
+@pytest.mark.parametrize("adapter_class", [WellfoundAIAdapter, BuiltInAIAdapter])
+@pytest.mark.parametrize("value", ["2026-08-01", "2026-08-01T00:00:00", "invalid", ""])
+async def test_jsonld_ambiguous_dates_never_replaced_by_modification(adapter_class, value, html_valid_job):
+    from src.validation.schemas import validate_job_record
+    html = html_valid_job.replace('"datePosted": "2026-08-01T00:00:00Z",',
+                                  f'"datePosted": "{value}", "dateModified": "2026-08-01T10:00:00Z",')
+    fetched = FetchResult("https://example.com/job/1", 200, html, "fixture", {})
+    records = await adapter_class(None).parse(fetched, DiscoveredUrl(fetched.url))
+    assert len(records) == 1
+    assert records[0].data["posted_at"] is None
+    assert validate_job_record(records[0].data)[0] is None
+    assert records[0].data["metadata_json"]["date_value"] == value
+
+
+async def test_builtin_accessible_listing_uses_only_actual_job_links():
+    html = '<a href="/job/ai-engineer/1">AI Engineer</a><a href="/job/ai-engineer/1">duplicate</a><a href="/company/1">Company</a><a href="https://elsewhere.test/job/fake">not BuiltIn</a>'
+    adapter = BuiltInAIAdapter(MockHttpClient({"https://builtin.com/jobs/ai-machine-learning": html}))
+    assert [d.url async for d in adapter.discover()] == ["https://builtin.com/job/ai-engineer/1"]
+
+
+@pytest.mark.parametrize("html", ["<html>Enable JavaScript</html>", "<html>Access Restricted</html>", ""])
+async def test_builtin_js_or_challenge_shell_yields_no_fake_jobs(html):
+    from src.errors import ParsingError
+    adapter = BuiltInAIAdapter(MockHttpClient({"https://builtin.com/jobs/ai-machine-learning": html}))
+    with pytest.raises(ParsingError):
+        [d async for d in adapter.discover()]
+    fetched = FetchResult("https://builtin.com/job/1", 200, html, "fixture", {})
+    assert await adapter.parse(fetched, DiscoveredUrl(fetched.url)) == []
+
+
+async def test_wellfound_403_is_not_bypassed():
+    from unittest.mock import AsyncMock
+    from src.errors import BlockedSourceError
+    client = AsyncMock()
+    client.get.side_effect = BlockedSourceError("403 Access Restricted")
+    with pytest.raises(BlockedSourceError):
+        [d async for d in WellfoundAIAdapter(client).discover()]
+    assert client.get.call_count == 1

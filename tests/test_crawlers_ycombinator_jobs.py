@@ -152,3 +152,22 @@ async def test_ycombinator_parse_missing_children_raises():
     
     with pytest.raises(ParsingError):
         await adapter.parse(fetch_result, DiscoveredUrl(url="x"))
+
+
+async def test_hn_uses_comment_time_and_explicit_role_not_location():
+    child = {"id": 999, "created_at": "2026-09-10T10:00:00+02:00",
+             "text": "Fixture Co | Remote (US) | ML Engineer | Full time<p>AI models"}
+    fetched = FetchResult("https://hn.algolia.com/api/v1/items/123", 200, json.dumps({"children": [child]}), "fixture", {})
+    records = await YCombinatorWhoIsHiringAdapter(None).parse(fetched, DiscoveredUrl(fetched.url, metadata={"story_created_at": "2026-09-01T10:00:00Z"}))
+    assert len(records) == 1
+    assert records[0].data["title"] == "ML Engineer"
+    assert records[0].data["posted_at"] == datetime(2026, 9, 10, 8, tzinfo=timezone.utc)
+    assert records[0].source_url == "https://news.ycombinator.com/item?id=999"
+    assert records[0].data["metadata_json"]["raw_record"] == child
+    assert records[0].data["metadata_json"]["date_field"] == "created_at"
+
+
+@pytest.mark.parametrize("text", ["Fixture | Remote | Full Time<p>AI company", "Fixture | Marketing Manager<p>Email campaigns", "AI company hiring!"])
+async def test_hn_ambiguous_or_non_ai_postings_are_not_invented(text):
+    fetched = FetchResult("https://hn.algolia.com/api/v1/items/123", 200, json.dumps({"children": [{"id": 999, "created_at": "2026-09-10T10:00:00Z", "text": text}]}), "fixture", {})
+    assert await YCombinatorWhoIsHiringAdapter(None).parse(fetched, DiscoveredUrl(fetched.url)) == []

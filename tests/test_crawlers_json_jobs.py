@@ -198,3 +198,28 @@ async def test_workingnomads_parse_not_a_list():
     fetch_result = FetchResult(url="x", status_code=200, text='{"error": "bad"}', content_hash="x", headers={})
     with pytest.raises(ParsingError):
         await adapter.parse(fetch_result, DiscoveredUrl(url="x"))
+
+
+@pytest.mark.parametrize("adapter_class,date_field,title_field,company_field", [
+    (RemoteOKAIAdapter, "date", "position", "company"),
+    (WorkingNomadsAIAdapter, "pub_date", "title", "company_name"),
+])
+@pytest.mark.parametrize("raw_date", [None, "2026-09-10", "2026-09-10T10:00:00", "garbage", 12345678])
+async def test_api_rejects_ambiguous_dates_without_updated_fallback(adapter_class, date_field, title_field, company_field, raw_date):
+    payload = [{title_field: "AI Engineer", company_field: "Fixture Co", "url": "https://example.com/job/1",
+                date_field: raw_date, "updated_at": "2026-09-10T10:00:00Z"}]
+    fetched = FetchResult("https://example.com/api", 200, json.dumps(payload), "fixture", {})
+    records = await adapter_class(None).parse(fetched, DiscoveredUrl(fetched.url))
+    assert len(records) == 1
+    assert records[0].data["posted_at"] is None
+    assert records[0].data["metadata_json"]["raw_record"] == payload[0]
+    assert records[0].data["metadata_json"]["date_field"] == date_field
+
+
+@pytest.mark.parametrize("adapter_class,title_field,company_field", [
+    (RemoteOKAIAdapter, "position", "company"), (WorkingNomadsAIAdapter, "title", "company_name")])
+async def test_api_local_ai_filter_no_incidental_substrings(adapter_class, title_field, company_field):
+    payload = [{title_field: "Paid Email Marketing", company_field: "Fixture", "url": "https://example.com/job/1",
+                "date": "2026-09-10T10:00:00Z", "pub_date": "2026-09-10T10:00:00Z"}]
+    fetched = FetchResult("https://example.com/api", 200, json.dumps(payload), "fixture", {})
+    assert await adapter_class(None).parse(fetched, DiscoveredUrl(fetched.url)) == []
