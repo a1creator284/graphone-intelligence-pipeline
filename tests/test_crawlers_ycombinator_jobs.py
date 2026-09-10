@@ -45,12 +45,14 @@ def items_response_valid():
     return json.dumps({
         "children": [
             {
+                "id": 101,
                 "created_at": "2026-08-02T10:00:00Z",
-                "text": "Stripe <a href=\"https://stripe.com/jobs\">https://stripe.com/jobs</a> | Software Engineer | Remote<p>We are hiring engineers."
+                "text": "Stripe <a href=\"https://stripe.com/jobs\">https://stripe.com/jobs</a> | AI Software Engineer | Remote<p>We are hiring engineers."
             },
             {
+                "id": 102,
                 "created_at": "2026-08-03T11:00:00Z",
-                "text": "OpenAI | Research Scientist | San Francisco | <a href=\"https://openai.com\">https://openai.com</a><p>Looking for researchers."
+                "text": "OpenAI | Research Scientist | San Francisco | <a href=\"https://openai.com\">https://openai.com</a><p>Looking for machine learning researchers."
             },
             {
                 # Missing URL
@@ -78,7 +80,7 @@ def items_response_valid():
 
 @pytest.mark.asyncio
 async def test_ycombinator_discover_finds_thread(search_response_valid):
-    client = MockHttpClient({"https://hn.algolia.com/api/v1/search_by_date?query=%22Ask+HN%3A+Who+is+hiring%3F%22&tags=story&hitsPerPage=1": search_response_valid})
+    client = MockHttpClient({"https://hn.algolia.com/api/v1/search_by_date?query=%22Ask+HN%3A+Who+is+hiring%3F%22&tags=story%2Cauthor_whoishiring&hitsPerPage=1": search_response_valid})
     adapter = YCombinatorWhoIsHiringAdapter(http_client=client)
     
     urls = [d async for d in adapter.discover()]
@@ -89,7 +91,7 @@ async def test_ycombinator_discover_finds_thread(search_response_valid):
 
 @pytest.mark.asyncio
 async def test_ycombinator_discover_empty_search(search_response_empty):
-    client = MockHttpClient({"https://hn.algolia.com/api/v1/search_by_date?query=%22Ask+HN%3A+Who+is+hiring%3F%22&tags=story&hitsPerPage=1": search_response_empty})
+    client = MockHttpClient({"https://hn.algolia.com/api/v1/search_by_date?query=%22Ask+HN%3A+Who+is+hiring%3F%22&tags=story%2Cauthor_whoishiring&hitsPerPage=1": search_response_empty})
     adapter = YCombinatorWhoIsHiringAdapter(http_client=client)
     
     urls = [d async for d in adapter.discover()]
@@ -98,11 +100,11 @@ async def test_ycombinator_discover_empty_search(search_response_empty):
 
 @pytest.mark.asyncio
 async def test_ycombinator_discover_malformed_json():
-    client = MockHttpClient({"https://hn.algolia.com/api/v1/search_by_date?query=%22Ask+HN%3A+Who+is+hiring%3F%22&tags=story&hitsPerPage=1": "{bad json"})
+    client = MockHttpClient({"https://hn.algolia.com/api/v1/search_by_date?query=%22Ask+HN%3A+Who+is+hiring%3F%22&tags=story%2Cauthor_whoishiring&hitsPerPage=1": "{bad json"})
     adapter = YCombinatorWhoIsHiringAdapter(http_client=client)
     
-    urls = [d async for d in adapter.discover()]
-    assert len(urls) == 0
+    with pytest.raises(ParsingError):
+        [d async for d in adapter.discover()]
 
 
 @pytest.mark.asyncio
@@ -121,14 +123,16 @@ async def test_ycombinator_parse_extracts_correctly(items_response_valid):
     
     job1 = records[0].data
     assert "Stripe" in job1["company"]
-    assert job1["title"] == "Software Engineer"
-    assert job1["url"] == "https://stripe.com/jobs"
+    assert job1["title"] == "AI Software Engineer"
+    assert job1["url"] == "https://news.ycombinator.com/item?id=101"
+    assert job1["company"] == "Stripe"
+    assert job1["metadata_json"]["application_url"] == "https://stripe.com/jobs"
     assert job1["posted_at"] == datetime(2026, 8, 2, 10, 0, tzinfo=timezone.utc)
     
     job2 = records[1].data
     assert "OpenAI" in job2["company"]
     assert job2["title"] == "Research Scientist"
-    assert job2["url"] == "https://openai.com"
+    assert job2["url"] == "https://news.ycombinator.com/item?id=102"
     assert job2["posted_at"] == datetime(2026, 8, 3, 11, 0, tzinfo=timezone.utc)
 
 

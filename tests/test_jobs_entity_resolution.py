@@ -8,6 +8,7 @@ back the required "Entity Mapping Log" export tab.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.crawlers.base import ParsedRecord
+from src.crawlers.http import FetchResult
 from src.pipeline.jobs import run_jobs_pipeline
 from src.storage.models import CanonicalEntity, EntityMappingLog, Job
 
@@ -25,12 +27,14 @@ def reference_time() -> datetime:
 
 
 def _job_record(title: str, company: str, url: str, posted_at: datetime) -> ParsedRecord:
+    raw = {"position": title, "company": company, "url": url, "date": posted_at.isoformat()}
     return ParsedRecord(
         record_type="job",
-        data={"title": title, "company": company, "url": url, "posted_at": posted_at},
+        data={"title": title, "company": company, "url": url, "posted_at": posted_at,
+              "metadata_json": {"raw_record": raw, "date_field": "date", "date_value": raw["date"]}},
         source_name="remoteok_ai_jobs",
         source_url=url,
-        fetch_result=None,
+        fetch_result=FetchResult(url, 200, json.dumps(raw), "fixture", {}),
     )
 
 

@@ -54,7 +54,7 @@ def html_valid_job():
 {
   "@context": "http://schema.org",
   "@type": "JobPosting",
-  "title": "Software Engineer",
+  "title": "AI Software Engineer",
   "datePosted": "2026-08-01T00:00:00Z",
   "url": "https://example.com/job/1",
   "hiringOrganization": {
@@ -74,7 +74,7 @@ def html_missing_required():
 {
   "@context": "http://schema.org",
   "@type": "JobPosting",
-  "title": "Software Engineer"
+  "title": "AI Software Engineer"
 }
 </script>
 </head></html>"""
@@ -107,7 +107,7 @@ def html_graph_job():
     {
       "@type": "JobPosting",
       "title": "Data Scientist",
-      "datePosted": "2026-08-02",
+      "datePosted": "2026-08-02T00:00:00Z",
       "hiringOrganization": {
         "name": "Beta Corp"
       }
@@ -136,8 +136,8 @@ def html_multiple_blocks():
 <script type="application/ld+json">
 {
   "@type": "JobPosting",
-  "title": "DevOps",
-  "datePosted": "2026-08-03",
+  "title": "MLOps Engineer",
+  "datePosted": "2026-08-03T00:00:00Z",
   "hiringOrganization": {"name": "Gamma Corp"}
 }
 </script>
@@ -189,7 +189,7 @@ async def test_parse_valid_job(html_valid_job):
     records = await adapter.parse(fetch_result, DiscoveredUrl(url="https://example.com/job/1"))
     assert len(records) == 1
     job = records[0].data
-    assert job["title"] == "Software Engineer"
+    assert job["title"] == "AI Software Engineer"
     assert job["company"] == "Acme Corp"
     assert job["url"] == "https://example.com/job/1"
     assert job["posted_at"] == datetime(2026, 8, 1, 0, 0, tzinfo=timezone.utc)
@@ -239,7 +239,7 @@ async def test_parse_multiple_blocks(html_multiple_blocks):
     
     records = await adapter.parse(fetch_result, DiscoveredUrl(url="https://foo.com/j"))
     assert len(records) == 1
-    assert records[0].data["title"] == "DevOps"
+    assert records[0].data["title"] == "MLOps Engineer"
 
 @pytest.mark.asyncio
 async def test_parse_empty_page():

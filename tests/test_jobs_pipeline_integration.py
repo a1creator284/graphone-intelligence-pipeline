@@ -15,6 +15,9 @@ All tests use mocked fixtures.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -93,6 +96,10 @@ async def test_pipeline_end_to_end_behavior(db_session: AsyncSession, reference_
         "company": "AI Corp",
         "url": "https://example.com/jobs/1",
         "posted_at": reference_time - timedelta(hours=2),
+        "metadata_json": {
+            "raw_record": {"date": (reference_time - timedelta(hours=2)).isoformat()},
+            "date_field": "date", "date_value": (reference_time - timedelta(hours=2)).isoformat(),
+        },
     }
 
     invalid_data = {
@@ -187,7 +194,9 @@ async def test_pipeline_end_to_end_behavior(db_session: AsyncSession, reference_
         raw_stmt = select(RawDocument).where(RawDocument.id == job.raw_document_id)
         raw_doc = (await db_session.execute(raw_stmt)).scalar_one()
         assert raw_doc.source_url == "https://example.com/jobs/1"
-        assert raw_doc.content_hash == "hash1"
+        assert raw_doc.content_hash == hashlib.sha256(b"html").hexdigest()
+        assert Path(raw_doc.raw_content_location).read_text() == "html"
+        assert job.metadata_json["source_url"] == job.url
 
         # Check processing errors
         error_stmt = select(ProcessingError)
@@ -212,6 +221,10 @@ async def test_pipeline_adapter_isolation(db_session: AsyncSession, reference_ti
             "company": "AI Corp",
             "url": "https://example.com/jobs/1",
             "posted_at": reference_time - timedelta(hours=2),
+        "metadata_json": {
+            "raw_record": {"pub_date": (reference_time - timedelta(hours=2)).isoformat()},
+            "date_field": "pub_date", "date_value": (reference_time - timedelta(hours=2)).isoformat(),
+        },
         }
 
         # Adapter 1 raises exception, adapter 2 returns a valid record, others empty
