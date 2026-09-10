@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 import re
 
-from pydantic import HttpUrl
+from pydantic import HttpUrl, TypeAdapter
 
 from src.config.logging import get_logger
 from src.crawlers.base import DiscoveredUrl, ParsedRecord, SourceAdapter
@@ -98,7 +98,7 @@ class HackerNewsAIAdapter(SourceAdapter):
                 continue
 
             try:
-                HttpUrl(article_url)
+                TypeAdapter(HttpUrl).validate_python(article_url)
             except (ValueError, TypeError):
                 continue
             if not isinstance(title, str) or not re.search(r"\b(?:AI|LLMs?|GPT|artificial intelligence|machine learning|deep learning|neural network)\b", title, re.I):

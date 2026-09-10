@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, field_validator
 
 
 class ResearchPaperRecord(BaseModel):
@@ -86,7 +86,7 @@ class NewsRecord(BaseModel):
     @classmethod
     def _url_must_be_http(cls, v: str) -> str:
         # Validate shape via HttpUrl without permanently changing the type
-        HttpUrl(v)
+        TypeAdapter(HttpUrl).validate_python(v)
         return v
 
     @field_validator("title")

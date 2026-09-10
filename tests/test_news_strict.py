@@ -16,7 +16,6 @@ from src.crawlers.base import DiscoveredUrl, ParsedRecord
 from src.crawlers.hackernews import HackerNewsAIAdapter
 from src.crawlers.http import FetchResult
 from src.crawlers.techcrunch import TechCrunchAIAdapter
-from src.errors import ParsingError
 from src.pipeline.news import ADAPTER_CLASSES, run_news_pipeline
 from src.pipeline.workers import RunStats
 from src.storage.models import News, RawDocument, ProcessingError
@@ -198,3 +197,50 @@ async def test_atom_updated_only_not_publication():
     assert found[0].metadata["rss_pubDate"] is None
     records = await adapter.parse(FetchResult(found[0].url, 200, article(None), "hash", {}), found[0])
     assert records[0].data["published_at"] is None
+
+
+@pytest.mark.parametrize("url", ["javascript:alert(1)", "ftp://news.test/a", "not-a-url", "", None])
+async def test_rss_and_schema_reject_non_http_urls(url):
+    from src.validation.schemas import validate_news_record
+
+    client = AsyncMock()
+    adapter = TechCrunchAIAdapter(client, reference_time=NOW)
+    xml = '<rss version="2.0"><channel><title>Test</title><item><title>AI test</title>'
+    if url is not None:
+        xml += '<link>' + escape(url) + '</link>'
+    xml += '</item></channel></rss>'
+    client.get.return_value = FetchResult(adapter.feed_url, 200, xml, "hash", {})
+    assert [d async for d in adapter.discover()] == []
+    validated, error = validate_news_record({"title": "AI test", "url": url, "source_name": adapter.name, "published_at": FRESH, "full_text_location": "inline:test"})
+    assert validated is None and error
+
+
+async def test_valid_empty_sources_are_not_failures_or_padded(db_session):
+    with respx.mock(assert_all_called=True) as router:
+        for cls in ADAPTER_CLASSES:
+            if cls is HackerNewsAIAdapter:
+                router.get(cls.BASE_URL).respond(200, json={"hits": []})
+            else:
+                router.get(cls.feed_url).respond(200, text='<rss version="2.0"><channel><title>Empty feed</title></channel></rss>')
+        result = await run_news_pipeline(db_session, reference_time=NOW)
+    assert result.valid_records == result.fetch_failed == result.invalid_records == 0
+    assert result.source_errors == {}
+    assert len(result.persisted_by_source) == 5
+    assert not any(result.persisted_by_source.values())
+    assert not (await db_session.execute(select(News))).scalars().all()
+
+
+@pytest.mark.parametrize("failure", [httpx.ConnectError("offline"), httpx.ReadTimeout("timeout")])
+async def test_network_discovery_failure_isolated(db_session, monkeypatch, failure):
+    monkeypatch.setenv("MAX_RETRIES", "1")
+    get_settings.cache_clear()
+    try:
+        with respx.mock(assert_all_called=False) as router:
+            mock_sources(router)
+            router.get(TechCrunchAIAdapter.feed_url).mock(side_effect=failure)
+            result = await run_news_pipeline(db_session, target=100, reference_time=NOW)
+        assert result.valid_records == 4
+        assert result.fetch_failed == 1
+        assert "techcrunch_ai_rss" in result.source_errors
+    finally:
+        get_settings.cache_clear()

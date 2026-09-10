@@ -23,7 +23,7 @@ from src.config.logging import get_logger
 from src.crawlers.base import DiscoveredUrl, ParsedRecord, SourceAdapter
 from src.crawlers.http import AsyncHttpClient, FetchResult
 from src.extraction.articles import ArticleExtractor
-from pydantic import HttpUrl
+from pydantic import HttpUrl, TypeAdapter
 
 from src.errors import ParsingError
 from src.validation.news_dates import extract_news_publication
@@ -66,7 +66,7 @@ class RSSNewsAdapter(SourceAdapter):
         for entry in feed.entries:
             link = entry.get("link")
             try:
-                HttpUrl(link)
+                TypeAdapter(HttpUrl).validate_python(link)
             except (ValueError, TypeError):
                 continue
 
