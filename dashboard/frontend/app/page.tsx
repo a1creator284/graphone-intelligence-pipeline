@@ -55,8 +55,11 @@ export default function DashboardPage() {
     // "API up, database down", which are very different things to report.
     try {
       const health = await fetchHealth(signal);
+      if (signal?.aborted) return;
       setConnection(health.database === "connected" ? "ok" : "degraded");
     } catch {
+      // Effect cleanup (including Strict Mode replay) is not an API failure.
+      if (signal?.aborted) return;
       setConnection("offline");
       setError(
         `Could not reach the dashboard API at ${API_BASE_URL}. Start the backend, then reload.`,
@@ -67,12 +70,15 @@ export default function DashboardPage() {
 
     try {
       const payload = await fetchStats(signal);
+      if (signal?.aborted) return;
       setStats(payload.stats);
       setGeneratedAt(payload.generated_at);
+      setError(null);
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : "Failed to load statistics.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
