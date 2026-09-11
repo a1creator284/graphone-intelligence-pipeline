@@ -40,3 +40,16 @@ data/sample/*.xlsx
 *.sqlite-*
 *.sqlite3-*
 .local/
+
+# Dashboard (Next.js frontend)
+dashboard/frontend/node_modules/
+dashboard/frontend/.next/
+dashboard/frontend/out/
+dashboard/frontend/build/
+dashboard/frontend/.env*.local
+dashboard/frontend/next-env.d.ts
+dashboard/frontend/*.tsbuildinfo
+
+# Dashboard (FastAPI backend)
+dashboard/backend/.env
+dashboard/backend/.venv/
