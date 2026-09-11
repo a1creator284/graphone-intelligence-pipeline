@@ -1,4 +1,4 @@
-import { prettyUrl } from "@/lib/format";
+import { prettyUrl, safeExternalUrl } from "@/lib/format";
 
 interface ExternalLinkProps {
   href?: string | null;
@@ -17,11 +17,13 @@ interface ExternalLinkProps {
  */
 export default function ExternalLink({ href, label, title }: ExternalLinkProps) {
   if (!href) return <span className="muted">—</span>;
+  const safeHref = safeExternalUrl(href);
+  if (!safeHref) return <span className="muted" title="Only HTTP(S) source links are supported">{label ?? "Source link unavailable"}</span>;
 
   return (
     <a
       className="link"
-      href={href}
+      href={safeHref}
       target="_blank"
       rel="noopener noreferrer"
       title={title ?? href}

@@ -75,6 +75,7 @@ export default function ResearchPage() {
         loading={state.initialLoading}
       />
       <RecordTable
+        detailKind="research-papers"
         state={state}
         columns={COLUMNS}
         rowKey={(row) => row.id}

@@ -81,6 +81,7 @@ export default function JobsPage() {
         loading={state.initialLoading}
       />
       <RecordTable
+        detailKind="jobs"
         state={state}
         columns={COLUMNS}
         rowKey={(row) => row.id}

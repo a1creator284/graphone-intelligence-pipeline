@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import RecentActivity from "@/components/RecentActivity";
 import StatCard from "@/components/StatCard";
 import StatusPill, { ConnectionState } from "@/components/StatusPill";
 import {
@@ -93,7 +94,7 @@ export default function DashboardPage() {
       <header className="page-header">
         <div>
           <h1>GraphOne Intelligence</h1>
-          <p>Live counts from the ingestion database.</p>
+          <p>Your read-only intelligence workspace. Live records, connected entities, and source evidence.</p>
         </div>
         <StatusPill state={connection} />
       </header>
@@ -122,6 +123,8 @@ export default function DashboardPage() {
           ))}
         </div>
       </section>
+
+      <RecentActivity />
 
       <h2 className="section-title">About this view</h2>
       <div className="panel">

@@ -148,6 +148,7 @@ export default function EntitiesPage() {
       </div>
 
       <RecordTable
+        detailKind="entities"
         state={state}
         columns={COLUMNS}
         rowKey={(row) => row.id}

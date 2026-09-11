@@ -55,6 +55,7 @@ export default function StartupsPage() {
         loading={state.initialLoading}
       />
       <RecordTable
+        detailKind="startups"
         state={state}
         columns={COLUMNS}
         rowKey={(row) => row.id}

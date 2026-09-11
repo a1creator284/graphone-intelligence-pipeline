@@ -12,7 +12,7 @@ export const EMPTY = "—";
 /** Locale date, or EMPTY when the row genuinely has no timestamp. */
 export function formatDate(value?: string | null): string {
   if (!value) return EMPTY;
-  const date = new Date(value);
+  const date = parseTimestamp(value);
   if (Number.isNaN(date.getTime())) return EMPTY;
   return date.toLocaleDateString(undefined, {
     year: "numeric",
@@ -23,7 +23,7 @@ export function formatDate(value?: string | null): string {
 
 export function formatDateTime(value?: string | null): string {
   if (!value) return EMPTY;
-  const date = new Date(value);
+  const date = parseTimestamp(value);
   if (Number.isNaN(date.getTime())) return EMPTY;
   return date.toLocaleString();
 }
@@ -63,4 +63,24 @@ export function formatAuthors(authors: unknown, shown = 2): string {
   if (names.length === 0) return EMPTY;
   const head = names.slice(0, shown).join(", ");
   return names.length > shown ? `${head} +${names.length - shown}` : head;
+}
+
+
+/** Pipeline timestamps without an offset represent UTC, not browser-local time. */
+function parseTimestamp(value: string): Date {
+  const hasTime = /[T ]\d{2}:\d{2}/.test(value);
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  return new Date(hasTime && !hasZone ? `${value}Z` : value);
+}
+
+/** Only absolute HTTP(S) URLs without embedded credentials are navigable. */
+export function safeExternalUrl(value?: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password
+      ? url.href : null;
+  } catch {
+    return null;
+  }
 }

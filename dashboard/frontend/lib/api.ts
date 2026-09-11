@@ -58,6 +58,7 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
       signal,
     });
   } catch (cause) {
+    if (signal?.aborted) throw cause;
     throw new ApiError(
       `Could not reach the dashboard API at ${API_BASE_URL}. Is the backend running?`,
     );
@@ -153,7 +154,7 @@ export interface ListQuery {
   offset: number;
   /** Case-insensitive substring filter; omitted when blank. */
   q?: string;
-  /** Only the entities endpoint understands this. */
+  /** Validated sort key supported by the selected list endpoint. */
   sort?: string;
 }
 
@@ -177,3 +178,91 @@ export function fetchPage<T>(
 ): Promise<Page<T>> {
   return apiGet<Page<T>>(`${path}?${buildQuery(query)}`, signal);
 }
+
+
+export interface Provenance {
+  id: string;
+  source_name: string;
+  source_url: string;
+  canonical_url: string;
+  retrieved_at?: string | null;
+  http_status?: number | null;
+  content_hash: string;
+  extraction_status?: string | null;
+}
+
+export interface EntityRef {
+  id: string;
+  canonical_name: string;
+  normalized_name: string;
+  entity_type: string;
+  created_at?: string | null;
+}
+
+export interface DetailContext {
+  collected_at?: string | null;
+  raw_document_id?: string | null;
+  provenance?: Provenance | null;
+  canonical_entity_id?: string | null;
+  canonical_entity?: EntityRef | null;
+}
+
+export interface StartupDetail extends Startup, DetailContext {}
+export interface ProductDetail extends Product, DetailContext {
+  source_external_id?: string | null;
+  metadata_json?: Record<string, unknown> | null;
+}
+export interface ResearchPaperDetail extends ResearchPaper, DetailContext {
+  paper_external_id?: string | null;
+}
+export interface NewsDetail extends NewsArticle, DetailContext {
+  extracted_metadata?: Record<string, unknown> | null;
+}
+export interface JobDetail extends Job, DetailContext {
+  metadata_json?: Record<string, unknown> | null;
+}
+export interface EntityDetail extends CanonicalEntity {
+  startups: Startup[];
+  products: Product[];
+  jobs: Job[];
+  relationship_limit: number;
+}
+
+export interface DetailMap {
+  startups: StartupDetail;
+  products: ProductDetail;
+  "research-papers": ResearchPaperDetail;
+  news: NewsDetail;
+  jobs: JobDetail;
+  entities: EntityDetail;
+}
+export type DetailKind = keyof DetailMap;
+export type RecordKind = Exclude<DetailKind, "entities">;
+export type RecordDetail = DetailMap[RecordKind];
+export interface DetailSelection { kind: DetailKind; id: string }
+
+export const DETAIL_LABELS: Record<DetailKind, string> = {
+  startups: "Startup", products: "Product", "research-papers": "Research paper",
+  news: "News", jobs: "Job", entities: "Canonical entity",
+};
+
+export function isRecordKind(value: string): value is RecordKind {
+  return ["startups", "products", "research-papers", "news", "jobs"].includes(value);
+}
+
+/** The selected endpoint determines the returned detail type. */
+export function fetchDetail<K extends DetailKind>(kind: K, id: string, signal?: AbortSignal) {
+  return apiGet<DetailMap[K]>(`/api/${kind}/${encodeURIComponent(id)}`, signal);
+}
+
+export interface ActivityItem {
+  id: string;
+  vertical: string;
+  title: string;
+  source_name: string;
+  source_url: string;
+  collected_at?: string | null;
+}
+export interface ActivityResponse { items: ActivityItem[]; limit: number }
+export const fetchRecentActivity = (signal?: AbortSignal) =>
+  apiGet<ActivityResponse>("/api/dashboard/recent-activity?limit=10", signal);

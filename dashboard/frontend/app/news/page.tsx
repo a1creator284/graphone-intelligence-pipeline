@@ -50,6 +50,7 @@ export default function NewsPage() {
         loading={state.initialLoading}
       />
       <RecordTable
+        detailKind="news"
         state={state}
         columns={COLUMNS}
         rowKey={(row) => row.id}

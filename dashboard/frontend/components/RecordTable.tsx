@@ -1,6 +1,8 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
+import DetailDrawer from "@/components/DetailDrawer";
+import { DetailKind, DetailSelection } from "@/lib/api";
 import Pagination from "@/components/Pagination";
 import { RecordPageState } from "@/lib/useRecordPage";
 
@@ -27,6 +29,7 @@ interface RecordTableProps<T> {
   emptyHint: string;
   /** Optional extra controls (e.g. a sort selector) beside the search box. */
   toolbarExtra?: ReactNode;
+  detailKind?: DetailKind;
 }
 
 const SKELETON_ROWS = 6;
@@ -51,7 +54,9 @@ export default function RecordTable<T>({
   emptyTitle,
   emptyHint,
   toolbarExtra,
+  detailKind,
 }: RecordTableProps<T>) {
+  const [selected, setSelected] = useState<DetailSelection | null>(null);
   const {
     items,
     total,
@@ -74,6 +79,7 @@ export default function RecordTable<T>({
 
   return (
     <section className="table-section">
+      {detailKind && <p className="table-hint">Select a row to explore its details and relationships.</p>}
       {(searchPlaceholder || toolbarExtra) && (
         <div className="toolbar">
           {searchPlaceholder ? (
@@ -95,7 +101,13 @@ export default function RecordTable<T>({
           ) : (
             <div />
           )}
-          {toolbarExtra ? <div className="toolbar__extra">{toolbarExtra}</div> : null}
+          {toolbarExtra ? <div className="toolbar__extra">{toolbarExtra}</div> : detailKind ? (
+            <label className="select-field"><span>Sort</span><select aria-label="Sort records"
+              value={state.sort ?? "recent"} onChange={(event) => state.setSort(event.target.value)}>
+              <option value="recent">Newest first</option><option value="oldest">Oldest first</option>
+              <option value="name">Name (A–Z)</option><option value="source">Source (A–Z)</option>
+            </select></label>
+          ) : null}
         </div>
       )}
 
@@ -145,7 +157,13 @@ export default function RecordTable<T>({
                       </tr>
                     ))
                   : items.map((row) => (
-                      <tr key={rowKey(row)}>
+                      <tr key={rowKey(row)} className={detailKind ? "table-row--interactive" : undefined}
+                        onClick={detailKind ? (event) => {
+                          if ((event.target as HTMLElement).closest("a, button, input, select")) return;
+                          const trigger = event.currentTarget.querySelector<HTMLButtonElement>(".row-detail-button");
+                          trigger?.focus();
+                          setSelected({ kind: detailKind, id: rowKey(row) });
+                        } : undefined}>
                         {columns.map((column) => (
                           <td
                             key={column.key}
@@ -156,7 +174,11 @@ export default function RecordTable<T>({
                               .filter(Boolean)
                               .join(" ")}
                           >
-                            {column.render(row)}
+                            {detailKind && column === columns[0] ? <>
+                              {column.render(row)}
+                              <button type="button" className="row-detail-button" aria-label={`View ${detailKind.replace("-", " ")} details ${rowKey(row)}`}
+                                onClick={() => setSelected({ kind: detailKind, id: rowKey(row) })}>View details →</button>
+                            </> : column.render(row)}
                           </td>
                         ))}
                       </tr>
@@ -204,6 +226,7 @@ export default function RecordTable<T>({
           ) : null}
         </>
       )}
+      {selected && <DetailDrawer key={`${selected.kind}:${selected.id}`} selection={selected} onClose={() => setSelected(null)} />}
     </section>
   );
 }

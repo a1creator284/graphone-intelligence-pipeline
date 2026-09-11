@@ -64,6 +64,7 @@ export default function ProductsPage() {
         loading={state.initialLoading}
       />
       <RecordTable
+        detailKind="products"
         state={state}
         columns={COLUMNS}
         rowKey={(row) => row.id}
