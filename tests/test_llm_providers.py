@@ -1,5 +1,6 @@
 import json
 import pytest
+import pytest_asyncio
 from pydantic import BaseModel, Field
 
 from src.crawlers.http import AsyncHttpClient
@@ -21,9 +22,10 @@ class DummySchema(BaseModel):
     name: str
     age: int
 
-@pytest.fixture
-def http_client():
-    return AsyncHttpClient()
+@pytest_asyncio.fixture
+async def http_client():
+    async with AsyncHttpClient() as client:
+        yield client
 
 from src.config.settings import get_settings
 
@@ -47,13 +49,16 @@ async def test_gemini_provider_success(respx_mock, http_client, configure_provid
             {"content": {"parts": [{"text": json.dumps({"name": "Alice", "age": 30})}]}}
         ]
     }
-    respx_mock.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=test_gemini_key").mock(
+    respx_mock.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent").mock(
         return_value=httpx.Response(200, json=gemini_resp)
     )
     provider = GeminiProvider(http_client)
     res = await provider.generate("sys", "user", DummySchema)
     assert res.name == "Alice"
     assert res.age == 30
+    request = respx_mock.calls.last.request
+    assert request.headers["x-goog-api-key"] == "test_gemini_key"
+    assert "test_gemini_key" not in str(request.url)
 
 @pytest.mark.asyncio
 async def test_gemini_missing_config(http_client, monkeypatch):
@@ -176,3 +181,24 @@ async def test_provider_timeout_error(respx_mock, http_client, configure_provide
     provider = GroqProvider(http_client)
     with pytest.raises(TimeoutErrorPipeline):
         await provider.generate("sys", "user", DummySchema)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_class,url,field", [
+    (GeminiProvider, "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", "candidates"),
+    (GroqProvider, "https://api.groq.com/openai/v1/chat/completions", "choices"),
+    (DeepSeekProvider, "https://api.deepseek.com/chat/completions", "choices"),
+])
+@pytest.mark.parametrize("shape", ["null_wrapper", "null_choices", "empty_choices", "null_content"])
+async def test_unusable_provider_shapes_are_typed_failures(
+    respx_mock, http_client, configure_providers, provider_class, url, field, shape
+):
+    bodies = {
+        "null_wrapper": None,
+        "null_choices": {field: None},
+        "empty_choices": {field: []},
+        "null_content": {field: [{"content": {"parts": [{"text": None}]}, "message": {"content": None}}]},
+    }
+    respx_mock.post(url).respond(200, text=json.dumps(bodies[shape]))
+    with pytest.raises(ParsingError):
+        await provider_class(http_client).generate("system", "payload", DummySchema)

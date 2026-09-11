@@ -149,13 +149,13 @@ async def test_413_rechunks_without_retrying_same_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_authentication_error_is_not_fallback() -> None:
+async def test_authentication_error_falls_back_without_retry() -> None:
     rows: list[object] = []
     primary = StubProvider(
         "gemini",
         [AuthenticationError("unauthorized")],
     )
-    fallback = StubProvider("groq", [Reply(text="should-not-run")])
+    fallback = StubProvider("groq", [Reply(text="recovered")])
 
     orchestrator = make_orchestrator(
         {"gemini": primary, "groq": fallback},
@@ -163,10 +163,10 @@ async def test_authentication_error_is_not_fallback() -> None:
         ["gemini", "groq"],
     )
 
-    with pytest.raises(AuthenticationError):
-        await orchestrator.generate("system", "work", Reply)
-
-    assert fallback.calls == []
+    assert await orchestrator.generate("system", "work", Reply) == Reply(text="recovered")
+    assert primary.calls == ["work"]
+    assert fallback.calls == ["work"]
+    assert rows[0].error_type == "AuthenticationError"
 
 
 @pytest.mark.asyncio
@@ -186,3 +186,46 @@ async def test_all_providers_exhausted() -> None:
 
     assert len(rows) == 2
     assert all(row.status == "error" for row in rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("successful_index", [0, 1, 2, None])
+async def test_default_three_provider_order_and_honest_exhaustion(successful_index):
+    from src.config.settings import Settings
+
+    order = Settings(_env_file=None).llm_provider_order
+    assert order == ["gemini", "groq", "deepseek"]
+    rows = []
+    # Deliberately reverse dictionary insertion order: configuration controls execution.
+    providers = {
+        name: StubProvider(name, [Reply(text=name) if index == successful_index else NetworkError("down")])
+        for index, name in reversed(list(enumerate(order)))
+    }
+    orchestrator = make_orchestrator(providers, rows, order)
+    if successful_index is None:
+        with pytest.raises(ProviderUnavailableError) as error:
+            await orchestrator.generate("system", "work", Reply)
+        assert isinstance(error.value.__cause__, NetworkError)
+        assert error.value.context["provider_order"] == order
+        assert all(row.status == "error" for row in rows)
+        attempted = order
+    else:
+        assert await orchestrator.generate("system", "work", Reply) == Reply(text=order[successful_index])
+        attempted = order[:successful_index + 1]
+        assert [row.status for row in rows] == ["error"] * successful_index + ["success"]
+    assert [row.provider for row in rows] == attempted
+    assert [row.fallback_used for row in rows] == [i > 0 for i in range(len(attempted))]
+    for name in order:
+        assert providers[name].calls == (["work"] if name in attempted else [])
+
+
+@pytest.mark.asyncio
+async def test_all_missing_credentials_fail_honestly():
+    rows = []
+    order = ["gemini", "groq", "deepseek"]
+    providers = {name: StubProvider(name, [AuthenticationError("not configured")]) for name in order}
+    orchestrator = make_orchestrator(providers, rows, order, max_retries=3)
+    with pytest.raises(ProviderUnavailableError):
+        await orchestrator.generate("system", "work", Reply)
+    assert [row.provider for row in rows] == order
+    assert all(row.error_type == "AuthenticationError" and row.retry_count == 0 for row in rows)

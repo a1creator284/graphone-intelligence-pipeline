@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from src.config.settings import get_settings
 from src.crawlers.retry import retry_async
 from src.errors import (
-    AuthenticationError,
     NetworkError,
     ParsingError,
     PayloadTooLargeError,
@@ -193,8 +192,6 @@ class LLMOrchestrator:
                     ),
                 )
             except PayloadTooLargeError:
-                raise
-            except AuthenticationError:
                 raise
             except (
                 RateLimitError,
