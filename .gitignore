@@ -31,3 +31,12 @@ build/
 data/raw/
 data/sample/*.csv
 data/sample/*.xlsx
+
+# Local databases and submission-run scratch (never commit)
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+.local/
