@@ -23,6 +23,7 @@ from src.storage.database import build_engine
 from src.storage.models import (
     Base,
     CanonicalEntity,
+    EntityAlias,
     Job,
     News,
     Product,
@@ -312,3 +313,260 @@ async def test_cors_allows_local_frontend_origin_only(client):
         "*",
         "https://evil.example.com",
     }
+
+
+# ---------------------------------------------------------------------------
+# Search filter (?q=)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_filters_rows_and_total(client, api_session):
+    api_session.add_all(
+        [
+            Startup(
+                entity_name="Anthropic",
+                source_name="ycombinator",
+                source_url="https://ycombinator.com/companies/anthropic",
+                collected_at=NOW,
+            ),
+            Startup(
+                entity_name="Cursor",
+                source_name="ycombinator",
+                source_url="https://ycombinator.com/companies/cursor",
+                collected_at=NOW,
+            ),
+        ]
+    )
+    await api_session.commit()
+
+    body = (await client.get("/api/startups?q=anthro")).json()
+    assert body["total"] == 1
+    assert body["items"][0]["entity_name"] == "Anthropic"
+    # total must reflect the *filtered* set, otherwise the pager lies.
+    assert body["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_is_case_insensitive(client, api_session):
+    api_session.add(
+        Startup(
+            entity_name="Anthropic",
+            source_name="ycombinator",
+            source_url="https://ycombinator.com/companies/anthropic",
+            collected_at=NOW,
+        )
+    )
+    await api_session.commit()
+
+    assert (await client.get("/api/startups?q=ANTHROPIC")).json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_wildcards_are_escaped_not_interpreted(client, api_session):
+    """A literal '%' in the query must not match everything."""
+    api_session.add_all(
+        [
+            Startup(
+                entity_name="Plain Co",
+                source_name="ycombinator",
+                source_url="https://ycombinator.com/companies/plain",
+                collected_at=NOW,
+            ),
+            Startup(
+                entity_name="100% Co",
+                source_name="ycombinator",
+                source_url="https://ycombinator.com/companies/pct",
+                collected_at=NOW,
+            ),
+        ]
+    )
+    await api_session.commit()
+
+    body = (await client.get("/api/startups?q=100%25")).json()
+    assert body["total"] == 1
+    assert body["items"][0]["entity_name"] == "100% Co"
+
+
+@pytest.mark.asyncio
+async def test_blank_search_is_treated_as_no_filter(client, api_session):
+    await _seed(api_session, startups=3, products=0, papers=0, jobs=0, news=0, entities=0, raw=0)
+
+    assert (await client.get("/api/startups?q=%20%20")).json()["total"] == 3
+
+
+@pytest.mark.parametrize(
+    "route,term",
+    [
+        ("/api/products", "Product 0"),
+        ("/api/research-papers", "Paper 0"),
+        ("/api/news", "Headline 0"),
+        ("/api/jobs", "ML Engineer 0"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_search_supported_on_every_list_route(client, api_session, route, term):
+    await _seed(api_session, startups=0, products=2, papers=2, jobs=2, news=2, entities=0, raw=0)
+
+    body = (await client.get(route, params={"q": term})).json()
+    assert body["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_overlong_search_term_is_rejected(client):
+    resp = await client.get("/api/startups", params={"q": "x" * 500})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Canonical entity explorer
+# ---------------------------------------------------------------------------
+
+
+async def _seed_entities(session):
+    """Two entities: one well connected, one with nothing pointing at it."""
+    linked = CanonicalEntity(canonical_name="Anthropic", normalized_name="anthropic")
+    orphan = CanonicalEntity(canonical_name="Zeta Labs", normalized_name="zeta labs")
+    session.add_all([linked, orphan])
+    await session.flush()
+
+    session.add_all(
+        [
+            EntityAlias(
+                canonical_entity_id=linked.id, alias="Anthropic PBC", normalized_alias="anthropic pbc"
+            ),
+            Startup(
+                entity_name="Anthropic",
+                canonical_entity_id=linked.id,
+                source_name="ycombinator",
+                source_url="https://ycombinator.com/companies/anthropic",
+                collected_at=NOW,
+            ),
+            Product(
+                product_name="Claude",
+                startup_name="Anthropic",
+                canonical_entity_id=linked.id,
+                source_name="huggingface",
+                source_url="https://huggingface.co/anthropic/claude",
+                dedup_key="hf:anthropic/claude",
+                collected_at=NOW,
+            ),
+            Job(
+                company="Anthropic",
+                canonical_entity_id=linked.id,
+                title="Research Engineer",
+                url="https://jobs.example.com/anthropic/1",
+                posted_at=NOW,
+                source_name="ycombinator_jobs",
+                collected_at=NOW,
+            ),
+        ]
+    )
+    await session.commit()
+    return linked, orphan
+
+
+@pytest.mark.asyncio
+async def test_entities_returns_empty_page_when_no_data(client):
+    resp = await client.get("/api/entities")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+    assert body["total"] == 0
+    assert body["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_entities_reports_linked_record_counts(client, api_session):
+    await _seed_entities(api_session)
+
+    body = (await client.get("/api/entities")).json()
+    assert body["total"] == 2
+
+    by_name = {item["canonical_name"]: item for item in body["items"]}
+    linked = by_name["Anthropic"]
+    assert linked["startup_count"] == 1
+    assert linked["product_count"] == 1
+    assert linked["job_count"] == 1
+    assert linked["total_records"] == 3
+    assert linked["alias_count"] == 1
+    assert linked["aliases"] == ["Anthropic PBC"]
+
+    # An entity nothing resolved onto must still be listed, with honest zeros.
+    orphan = by_name["Zeta Labs"]
+    assert orphan["total_records"] == 0
+    assert orphan["aliases"] == []
+
+
+@pytest.mark.asyncio
+async def test_entities_default_sort_is_most_connected_first(client, api_session):
+    await _seed_entities(api_session)
+
+    items = (await client.get("/api/entities")).json()["items"]
+    assert [i["canonical_name"] for i in items] == ["Anthropic", "Zeta Labs"]
+
+
+@pytest.mark.asyncio
+async def test_entities_sort_by_name(client, api_session):
+    await _seed_entities(api_session)
+
+    items = (await client.get("/api/entities?sort=name")).json()["items"]
+    assert [i["canonical_name"] for i in items] == ["Anthropic", "Zeta Labs"]
+
+
+@pytest.mark.asyncio
+async def test_entities_unknown_sort_falls_back_instead_of_erroring(client, api_session):
+    await _seed_entities(api_session)
+
+    resp = await client.get("/api/entities?sort=; DROP TABLE canonical_entities")
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_entities_search_matches_canonical_name(client, api_session):
+    await _seed_entities(api_session)
+
+    body = (await client.get("/api/entities?q=zeta")).json()
+    assert body["total"] == 1
+    assert body["items"][0]["canonical_name"] == "Zeta Labs"
+
+
+@pytest.mark.asyncio
+async def test_entities_search_matches_alias(client, api_session):
+    """Looking an entity up by a name the pipeline folded away must work."""
+    await _seed_entities(api_session)
+
+    body = (await client.get("/api/entities?q=Anthropic PBC")).json()
+    assert body["total"] == 1
+    assert body["items"][0]["canonical_name"] == "Anthropic"
+
+
+@pytest.mark.asyncio
+async def test_entities_pagination_is_bounded(client, api_session):
+    for i in range(5):
+        api_session.add(
+            CanonicalEntity(canonical_name=f"Entity {i}", normalized_name=f"entity {i}")
+        )
+    await api_session.commit()
+
+    first = (await client.get("/api/entities?limit=2&offset=0")).json()
+    assert first["total"] == 5
+    assert len(first["items"]) == 2
+    assert first["has_more"] is True
+
+    last = (await client.get("/api/entities?limit=2&offset=4")).json()
+    assert len(last["items"]) == 1
+    assert last["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_entities_limit_above_cap_is_rejected(client):
+    resp = await client.get(f"/api/entities?limit={MAX_PAGE_SIZE + 1}")
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_entities_endpoint_is_read_only(client):
+    assert (await client.post("/api/entities", json={})).status_code == 405
+    assert (await client.delete("/api/entities")).status_code == 405

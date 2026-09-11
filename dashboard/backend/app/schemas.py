@@ -102,3 +102,24 @@ class NewsOut(ORMModel):
     url: str
     source_name: str
     published_at: datetime | None = None
+
+
+class CanonicalEntityOut(ORMModel):
+    """A resolved entity plus how many records across the graph point at it.
+
+    The counts are what make this view useful: a canonical entity on its own
+    is just a name, but "Anthropic — 1 startup row, 12 products, 40 jobs"
+    tells you immediately whether resolution actually connected anything.
+    """
+
+    id: UUID
+    canonical_name: str
+    normalized_name: str
+    entity_type: str
+    created_at: datetime | None = None
+    alias_count: int = 0
+    startup_count: int = 0
+    product_count: int = 0
+    job_count: int = 0
+    total_records: int = 0
+    aliases: list[str] = Field(default_factory=list)
