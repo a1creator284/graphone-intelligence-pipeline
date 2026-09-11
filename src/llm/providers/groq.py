@@ -55,12 +55,12 @@ class GroqProvider(LLMProvider):
         try:
             # Extract JSON string from OpenAI-compatible response format
             text_response = data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError) as exc:
+        except (KeyError, IndexError, TypeError) as exc:
             raise ParsingError("Provider response did not match expected structure") from exc
 
         try:
             parsed_json = json.loads(text_response)
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, TypeError) as exc:
             raise ParsingError("Provider generated malformed JSON payload") from exc
 
         try:

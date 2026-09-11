@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 
 from bs4 import BeautifulSoup
@@ -9,7 +10,8 @@ from src.config.logging import get_logger
 from src.crawlers.base import DiscoveredUrl, ParsedRecord, SourceAdapter
 from src.crawlers.http import FetchResult
 from src.errors import ParsingError
-from src.extraction.dates import parse_absolute_date
+from src.crawlers.sitemap_jobs_base import is_ai_job
+from src.validation.job_dates import parse_job_timestamp
 from src.extraction.urls import normalize_url
 
 logger = get_logger(component="ycombinator_adapter")
@@ -29,7 +31,7 @@ class YCombinatorWhoIsHiringAdapter(SourceAdapter):
         query = '"Ask HN: Who is hiring?"'
         params = urllib.parse.urlencode({
             "query": query,
-            "tags": "story",
+            "tags": "story,author_whoishiring",
             "hitsPerPage": 1
         })
         search_url = f"https://hn.algolia.com/api/v1/search_by_date?{params}"
@@ -38,10 +40,11 @@ class YCombinatorWhoIsHiringAdapter(SourceAdapter):
         try:
             search_data = json.loads(search_fetch.text)
         except json.JSONDecodeError as exc:
-            logger.warning("ycombinator_search_json_failed", error=str(exc))
-            return
+            raise ParsingError(f"Malformed HN story search: {exc}") from exc
         
-        hits = search_data.get("hits", [])
+        if not isinstance(search_data, dict) or not isinstance(search_data.get("hits"), list):
+            raise ParsingError("HN story search is missing its hits list")
+        hits = search_data["hits"]
         if not hits:
             logger.info("ycombinator_no_whoishiring_thread_found")
             return
@@ -67,7 +70,7 @@ class YCombinatorWhoIsHiringAdapter(SourceAdapter):
         except json.JSONDecodeError as exc:
             raise ParsingError(f"Malformed JSON from HN Items API: {exc}", context={"url": fetch_result.url}) from exc
 
-        if "children" not in payload or not isinstance(payload["children"], list):
+        if not isinstance(payload, dict) or "children" not in payload or not isinstance(payload["children"], list):
             raise ParsingError("Expected a 'children' list in HN Items response", context={"url": fetch_result.url})
         
         children = payload["children"]
@@ -78,32 +81,34 @@ class YCombinatorWhoIsHiringAdapter(SourceAdapter):
                 continue
                 
             text_html = child.get("text")
-            if not text_html:
+            if not isinstance(text_html, str) or not text_html or child.get("dead") or child.get("deleted"):
                 continue
                 
-            # Extract URL: first link in the comment
+            comment_id = child.get("id")
+            if not str(comment_id or "").isdigit():
+                continue
             soup = BeautifulSoup(text_html, "lxml")
-            a_tag = soup.find("a")
-            url = a_tag["href"] if a_tag and a_tag.has_attr("href") else ""
-            
-            # Heuristic: split first paragraph by '|'
-            first_p_html = text_html.split("<p>")[0]
-            first_p_text = BeautifulSoup(first_p_html, "lxml").get_text(separator=" ", strip=True)
-            
-            parts = [p.strip() for p in first_p_text.split("|")]
+            if not is_ai_job(soup.get_text(" ", strip=True)):
+                continue
+            a_tag = soup.find("a", href=True)
+            application_url = a_tag["href"] if a_tag else None
+            first_line = BeautifulSoup(re.split(r"<p[^>]*>|<br\s*/?>", text_html, maxsplit=1, flags=re.I)[0], "lxml")
+            # Links are not employer names; keep only the literal name text.
+            for anchor in first_line.find_all("a"):
+                anchor.decompose()
+            parts = [p.strip() for p in first_line.get_text(" ", strip=True).split("|")]
             if len(parts) < 2:
-                # Not formatted as "Company | Title | ...", skip it
                 continue
-                
             company = parts[0]
-            title = parts[1]
-            
-            if not title or not company or not url:
+            # Locate an explicit role segment rather than calling "Remote" a title.
+            title = next((part for part in parts[1:] if re.search(
+                r"\b(?:engineers?|developers?|scientists?|researchers?|analysts?|designers?|architects?|"
+                r"managers?|MLOps|DevOps|CTO|roles?|positions?)\b", part, re.I
+            )), None)
+            if not title or not company:
                 continue
-                
-            posted_at = parse_absolute_date(child.get("created_at", ""))
-            if not posted_at:
-                continue
+            url = f"https://news.ycombinator.com/item?id={comment_id}"
+            posted_at = parse_job_timestamp(child.get("created_at"))
 
             records.append(
                 ParsedRecord(
@@ -117,6 +122,10 @@ class YCombinatorWhoIsHiringAdapter(SourceAdapter):
                         "is_remote": None,
                         "role_family": None,
                         "raw_document_id": None,
+                        "metadata_json": {"raw_record": child, "date_field": "created_at",
+                                          "date_value": child.get("created_at"), "source_url": url,
+                                          "application_url": application_url,
+                                          "story_created_at": discovered.metadata.get("story_created_at")},
                     },
                     source_name=self.name,
                     source_url=normalize_url(url),

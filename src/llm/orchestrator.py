@@ -7,6 +7,7 @@ re-chunking, Pydantic validation, and one LLMRequest row per provider attempt.
 from __future__ import annotations
 
 import time
+import json
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -15,7 +16,6 @@ from pydantic import BaseModel
 from src.config.settings import get_settings
 from src.crawlers.retry import retry_async
 from src.errors import (
-    AuthenticationError,
     NetworkError,
     ParsingError,
     PayloadTooLargeError,
@@ -73,6 +73,12 @@ class LLMOrchestrator:
                 )
             )
 
+        # Stable exact-record deduplication only: never synthesize or merge fields.
+        unique: dict[str, T] = {}
+        for result in results:
+            key = json.dumps(result.model_dump(mode="json"), sort_keys=True)
+            unique.setdefault(key, result)
+        results = list(unique.values())
         return results[0] if len(results) == 1 else results
 
     async def _generate_chunk(
@@ -84,6 +90,7 @@ class LLMOrchestrator:
         request_id: str | None,
         source_url: str | None,
         record_type: str | None,
+        split_depth: int = 0,
     ) -> list[T]:
         try:
             return [
@@ -97,10 +104,11 @@ class LLMOrchestrator:
                 )
             ]
         except PayloadTooLargeError:
-            if len(payload) <= 1:
+            if len(payload) <= 1 or split_depth >= self.settings.llm_max_split_depth:
                 raise
 
-            smaller = chunk_text(payload, char_budget=max(1, len(payload) // 2))
+            midpoint = len(payload) // 2
+            smaller = (payload[:midpoint], payload[midpoint:])
             results: list[T] = []
             for piece in smaller:
                 results.extend(
@@ -111,6 +119,7 @@ class LLMOrchestrator:
                         request_id=request_id,
                         source_url=source_url,
                         record_type=record_type,
+                        split_depth=split_depth + 1,
                     )
                 )
             return results
@@ -193,8 +202,6 @@ class LLMOrchestrator:
                     ),
                 )
             except PayloadTooLargeError:
-                raise
-            except AuthenticationError:
                 raise
             except (
                 RateLimitError,

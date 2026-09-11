@@ -75,7 +75,7 @@ async def test_remoteok_parse_valid_and_multiple_jobs(remoteok_sample_payload):
 
 @pytest.mark.asyncio
 async def test_remoteok_parse_missing_date_allowed():
-    payload = [{"position": "Engineer", "company": "Foo", "url": "https://foo.com"}]
+    payload = [{"position": "AI Engineer", "company": "Foo", "url": "https://foo.com"}]
     adapter = RemoteOKAIAdapter(http_client=None)
     fetch_result = FetchResult(url="x", status_code=200, text=json.dumps(payload), content_hash="x", headers={})
     records = await adapter.parse(fetch_result, DiscoveredUrl(url="x"))
@@ -114,7 +114,7 @@ def workingnomads_sample_payload():
     return [
         {
             "id": "1",
-            "title": "Data Engineer",
+            "title": "AI Data Engineer",
             "company_name": "Nomad Corp",
             "url": "https://www.workingnomads.com/jobs/data-engineer",
             "pub_date": "2026-08-09T10:00:00+00:00",
@@ -153,7 +153,7 @@ async def test_workingnomads_parse_valid_and_multiple_jobs(workingnomads_sample_
     assert len(records) == 2
     
     job1 = records[0].data
-    assert job1["title"] == "Data Engineer"
+    assert job1["title"] == "AI Data Engineer"
     assert job1["company"] == "Nomad Corp"
     assert job1["url"] == "https://www.workingnomads.com/jobs/data-engineer"
     assert job1["posted_at"] == datetime(2026, 8, 9, 10, 0, tzinfo=timezone.utc)
@@ -168,7 +168,7 @@ async def test_workingnomads_parse_valid_and_multiple_jobs(workingnomads_sample_
 
 @pytest.mark.asyncio
 async def test_workingnomads_parse_missing_date_allowed():
-    payload = [{"title": "Engineer", "company_name": "Foo", "url": "https://foo.com"}]
+    payload = [{"title": "AI Engineer", "company_name": "Foo", "url": "https://foo.com"}]
     adapter = WorkingNomadsAIAdapter(http_client=None)
     fetch_result = FetchResult(url="x", status_code=200, text=json.dumps(payload), content_hash="x", headers={})
     records = await adapter.parse(fetch_result, DiscoveredUrl(url="x"))
@@ -198,3 +198,28 @@ async def test_workingnomads_parse_not_a_list():
     fetch_result = FetchResult(url="x", status_code=200, text='{"error": "bad"}', content_hash="x", headers={})
     with pytest.raises(ParsingError):
         await adapter.parse(fetch_result, DiscoveredUrl(url="x"))
+
+
+@pytest.mark.parametrize("adapter_class,date_field,title_field,company_field", [
+    (RemoteOKAIAdapter, "date", "position", "company"),
+    (WorkingNomadsAIAdapter, "pub_date", "title", "company_name"),
+])
+@pytest.mark.parametrize("raw_date", [None, "2026-09-10", "2026-09-10T10:00:00", "garbage", 12345678])
+async def test_api_rejects_ambiguous_dates_without_updated_fallback(adapter_class, date_field, title_field, company_field, raw_date):
+    payload = [{title_field: "AI Engineer", company_field: "Fixture Co", "url": "https://example.com/job/1",
+                date_field: raw_date, "updated_at": "2026-09-10T10:00:00Z"}]
+    fetched = FetchResult("https://example.com/api", 200, json.dumps(payload), "fixture", {})
+    records = await adapter_class(None).parse(fetched, DiscoveredUrl(fetched.url))
+    assert len(records) == 1
+    assert records[0].data["posted_at"] is None
+    assert records[0].data["metadata_json"]["raw_record"] == payload[0]
+    assert records[0].data["metadata_json"]["date_field"] == date_field
+
+
+@pytest.mark.parametrize("adapter_class,title_field,company_field", [
+    (RemoteOKAIAdapter, "position", "company"), (WorkingNomadsAIAdapter, "title", "company_name")])
+async def test_api_local_ai_filter_no_incidental_substrings(adapter_class, title_field, company_field):
+    payload = [{title_field: "Paid Email Marketing", company_field: "Fixture", "url": "https://example.com/job/1",
+                "date": "2026-09-10T10:00:00Z", "pub_date": "2026-09-10T10:00:00Z"}]
+    fetched = FetchResult("https://example.com/api", 200, json.dumps(payload), "fixture", {})
+    assert await adapter_class(None).parse(fetched, DiscoveredUrl(fetched.url)) == []

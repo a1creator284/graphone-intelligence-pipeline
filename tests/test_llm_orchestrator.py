@@ -77,6 +77,7 @@ def make_orchestrator(
     )
     orchestrator.settings = SimpleNamespace(
         llm_token_budget=1,
+        llm_max_split_depth=8,
         llm_provider_order=provider_order,
         llm_max_retries=max_retries,
         retry_base_delay_seconds=0,
@@ -149,13 +150,13 @@ async def test_413_rechunks_without_retrying_same_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_authentication_error_is_not_fallback() -> None:
+async def test_authentication_error_falls_back_without_retry() -> None:
     rows: list[object] = []
     primary = StubProvider(
         "gemini",
         [AuthenticationError("unauthorized")],
     )
-    fallback = StubProvider("groq", [Reply(text="should-not-run")])
+    fallback = StubProvider("groq", [Reply(text="recovered")])
 
     orchestrator = make_orchestrator(
         {"gemini": primary, "groq": fallback},
@@ -163,10 +164,10 @@ async def test_authentication_error_is_not_fallback() -> None:
         ["gemini", "groq"],
     )
 
-    with pytest.raises(AuthenticationError):
-        await orchestrator.generate("system", "work", Reply)
-
-    assert fallback.calls == []
+    assert await orchestrator.generate("system", "work", Reply) == Reply(text="recovered")
+    assert primary.calls == ["work"]
+    assert fallback.calls == ["work"]
+    assert rows[0].error_type == "AuthenticationError"
 
 
 @pytest.mark.asyncio
@@ -186,3 +187,115 @@ async def test_all_providers_exhausted() -> None:
 
     assert len(rows) == 2
     assert all(row.status == "error" for row in rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("successful_index", [0, 1, 2, None])
+async def test_default_three_provider_order_and_honest_exhaustion(successful_index):
+    from src.config.settings import Settings
+
+    order = Settings(_env_file=None).llm_provider_order
+    assert order == ["gemini", "groq", "deepseek"]
+    rows = []
+    # Deliberately reverse dictionary insertion order: configuration controls execution.
+    providers = {
+        name: StubProvider(name, [Reply(text=name) if index == successful_index else NetworkError("down")])
+        for index, name in reversed(list(enumerate(order)))
+    }
+    orchestrator = make_orchestrator(providers, rows, order)
+    if successful_index is None:
+        with pytest.raises(ProviderUnavailableError) as error:
+            await orchestrator.generate("system", "work", Reply)
+        assert isinstance(error.value.__cause__, NetworkError)
+        assert error.value.context["provider_order"] == order
+        assert all(row.status == "error" for row in rows)
+        attempted = order
+    else:
+        assert await orchestrator.generate("system", "work", Reply) == Reply(text=order[successful_index])
+        attempted = order[:successful_index + 1]
+        assert [row.status for row in rows] == ["error"] * successful_index + ["success"]
+    assert [row.provider for row in rows] == attempted
+    assert [row.fallback_used for row in rows] == [i > 0 for i in range(len(attempted))]
+    for name in order:
+        assert providers[name].calls == (["work"] if name in attempted else [])
+
+
+@pytest.mark.asyncio
+async def test_all_missing_credentials_fail_honestly():
+    rows = []
+    order = ["gemini", "groq", "deepseek"]
+    providers = {name: StubProvider(name, [AuthenticationError("not configured")]) for name in order}
+    orchestrator = make_orchestrator(providers, rows, order, max_retries=3)
+    with pytest.raises(ProviderUnavailableError):
+        await orchestrator.generate("system", "work", Reply)
+    assert [row.provider for row in rows] == order
+    assert all(row.error_type == "AuthenticationError" and row.retry_count == 0 for row in rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload,depth,expected", [("x", 8, ["x"]), ("abcdefgh", 1, ["abcdefgh", "abcd"])])
+async def test_impossible_413_fails_at_single_character_or_depth_bound(payload, depth, expected):
+    rows = []
+    provider = StubProvider("gemini", [PayloadTooLargeError("413")] * len(expected))
+    orchestrator = make_orchestrator({"gemini": provider}, rows, ["gemini"], max_retries=3)
+    orchestrator.settings.llm_token_budget = 100
+    orchestrator.settings.llm_max_split_depth = depth
+    with pytest.raises(PayloadTooLargeError):
+        await orchestrator.generate("oversized system instruction", payload, Reply)
+    assert provider.calls == expected
+    assert all(row.status == "error" for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_exact_duplicate_results_removed_in_first_seen_order():
+    rows = []
+    provider = StubProvider("gemini", [Reply(text="first"), Reply(text="second"), Reply(text="first")])
+    orchestrator = make_orchestrator({"gemini": provider}, rows, ["gemini"])
+    result = await orchestrator.generate("system", "abcdefghijkl", Reply)
+    assert result == [Reply(text="first"), Reply(text="second")]
+    assert provider.calls == ["abcd", "efgh", "ijkl"]
+    assert len(rows) == 3  # attempts are never deduplicated from telemetry
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_last", [False, True])
+async def test_http_413_roundtrip_order_no_replay_and_no_partial_success(respx_mock, monkeypatch, fail_last):
+    import json
+    import httpx
+    from src.config.settings import get_settings
+    from src.crawlers.http import AsyncHttpClient
+    from src.llm.providers.groq import GroqProvider
+
+    monkeypatch.setenv("GROQ_API_KEY", "test-only")
+    monkeypatch.setenv("GROQ_MODEL", "test-llama")
+    get_settings.cache_clear()
+    payloads = []
+
+    def respond(request):
+        payload = json.loads(request.content)["messages"][1]["content"]
+        payloads.append(payload)
+        if len(payload) > 2 or (fail_last and payload == "gh"):
+            return httpx.Response(413)
+        if fail_last and payload == "h":
+            return httpx.Response(413)
+        return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps({"text": payload})}}]})
+
+    respx_mock.post("https://api.groq.com/openai/v1/chat/completions").mock(side_effect=respond)
+    try:
+        async with AsyncHttpClient() as client:
+            rows = []
+            orchestrator = make_orchestrator({"groq": GroqProvider(client)}, rows, ["groq"], max_retries=3)
+            orchestrator.settings.llm_token_budget = 100
+            if fail_last:
+                with pytest.raises(PayloadTooLargeError):
+                    await orchestrator.generate("system", "abcdefgh", Reply)
+                assert payloads == ["abcdefgh", "abcd", "ab", "cd", "efgh", "ef", "gh", "g", "h"]
+            else:
+                results = await orchestrator.generate("system", "abcdefgh", Reply)
+                assert [result.text for result in results] == ["ab", "cd", "ef", "gh"]
+                assert "".join(result.text for result in results) == "abcdefgh"
+                assert payloads == ["abcdefgh", "abcd", "ab", "cd", "efgh", "ef", "gh"]
+            assert len(set(payloads)) == len(payloads)
+            assert len(rows) == len(payloads)
+    finally:
+        get_settings.cache_clear()

@@ -57,3 +57,40 @@ async def test_200_returns_fetch_result_with_content_hash():
     assert result.text == "hello world"
     assert len(result.content_hash) == 64
     await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["get", "post"])
+@pytest.mark.parametrize("header,expected_delay", [
+    ("4", 4), ("Thu, 01 Jan 1970 00:00:15 GMT", 5), ("invalid", 1), ("nan", 1),
+])
+async def test_429_http_retry_after_and_recovery(respx_mock, monkeypatch, method, header, expected_delay):
+    from unittest.mock import AsyncMock
+    sleep = AsyncMock()
+    monkeypatch.setattr("src.crawlers.retry.asyncio.sleep", sleep)
+    monkeypatch.setattr("src.crawlers.retry.random.uniform", lambda low, high: high)
+    monkeypatch.setattr("src.crawlers.retry.time.time", lambda: 10)
+    route = respx_mock.route(method=method.upper(), url="https://example.com/retry").mock(
+        side_effect=[httpx.Response(429, headers={"Retry-After": header}), httpx.Response(200, text="ok")]
+    )
+    async with AsyncHttpClient(max_retries=3) as client:
+        client._base_delay, client._max_delay = 1, 30
+        kwargs = {"json": {"input": "same"}, "retry": True} if method == "post" else {}
+        result = await getattr(client, method)("https://example.com/retry", **kwargs)
+    assert result.text == "ok"
+    assert route.call_count == 2
+    sleep.assert_awaited_once_with(expected_delay)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["get", "post"])
+async def test_http_429_exhaustion_is_bounded(respx_mock, monkeypatch, method):
+    from unittest.mock import AsyncMock
+    sleep = AsyncMock()
+    monkeypatch.setattr("src.crawlers.retry.asyncio.sleep", sleep)
+    route = respx_mock.route(method=method.upper(), url="https://example.com/limited").respond(429)
+    async with AsyncHttpClient(max_retries=3) as client:
+        with pytest.raises(RateLimitError):
+            await getattr(client, method)("https://example.com/limited", **({"retry": True} if method == "post" else {}))
+    assert route.call_count == 3
+    assert sleep.await_count == 2

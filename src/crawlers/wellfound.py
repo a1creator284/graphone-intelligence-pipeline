@@ -3,8 +3,8 @@ from __future__ import annotations
 from src.config.logging import get_logger
 from src.crawlers.base import DiscoveredUrl, ParsedRecord
 from src.crawlers.http import FetchResult
-from src.crawlers.sitemap_jobs_base import SitemapJobsAdapter, extract_job_posting_jsonld
-from src.extraction.dates import parse_absolute_date
+from src.crawlers.sitemap_jobs_base import SitemapJobsAdapter, extract_job_posting_jsonld, is_ai_job
+from src.validation.job_dates import parse_job_timestamp
 from src.extraction.urls import normalize_url
 
 logger = get_logger(component="wellfound_adapter")
@@ -32,12 +32,13 @@ class WellfoundAIAdapter(SitemapJobsAdapter):
         url_raw = job_posting.get("url") or discovered.url
         posted_at_raw = job_posting.get("datePosted")
 
-        if not title or not company or not url_raw or not posted_at_raw:
+        if not title or not company or not url_raw:
             return []
 
-        posted_at = parse_absolute_date(posted_at_raw)
-        if not posted_at:
+        if not is_ai_job(title, job_posting.get("description")):
             return []
+
+        posted_at = parse_job_timestamp(posted_at_raw)
 
         url = normalize_url(url_raw)
 
@@ -53,9 +54,11 @@ class WellfoundAIAdapter(SitemapJobsAdapter):
                     "is_remote": None,
                     "role_family": None,
                     "raw_document_id": None,
+                    "metadata_json": {"raw_record": job_posting, "date_field": "datePosted",
+                                      "date_value": posted_at_raw, "source_url": discovered.url},
                 },
                 source_name=self.name,
-                source_url=url,
+                source_url=discovered.url,
                 fetch_result=fetch_result,
             )
         ]
