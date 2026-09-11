@@ -380,9 +380,10 @@ persisted `Job`); resolution failure is caught and degrades to a null link
 rather than dropping the record. `Startup` and `Product` carry the same FK
 column and will call the identical resolver when Phases 9-11 land.
 
-At 500k+ records only the candidate index changes: swap the in-process
-dict/`extractOne` scan for a `pg_trgm` GIN index or a shared Redis set. The
-`EntityResolver.resolve()` signature and the log schema stay identical.
+A scale-out candidate lookup could replace the in-process dict/`extractOne`
+scan with a database-backed index while retaining the resolver interface and
+log schema. This is planned, not implemented or benchmarked; candidate loading
+and cross-worker consistency also need validation (see the scalability audit).
 
 See `tests/test_entity_normalization.py`, `tests/test_entity_resolver.py`,
 and `tests/test_jobs_entity_resolution.py` (37 tests).
@@ -395,16 +396,76 @@ only in application code — see `tests/test_models_and_dedup.py` and
 which proves 10 concurrent "workers" racing on the same URL produce exactly
 one row using `INSERT ... ON CONFLICT DO NOTHING`.
 
-## Scaling to 500k+
+## Scalability: bounded discovery, not a 500k proof
 
-The worker pool (`src/pipeline/workers.py`) takes `max_concurrency` as a
-parameter, sourced from `MAX_CONCURRENCY`/`--workers`. Scaling from a
-demo run to 500k+ records is intended to be: more workers, a Redis-backed
-job queue in front of `CrawlJob` rows (Phase 9+), a larger Postgres
-instance/connection pool, and raw HTML moved to S3/MinIO instead of
-Postgres (`RAW_STORAGE_BACKEND=s3` in settings) — not a rewrite of the
-crawler logic itself, which is already adapter-agnostic and
-concurrency-bounded.
+**500k records have not been proven.** The continuation from `c956fff`
+fixes the shared discovery scheduler only; the completed verticals, entity
+resolution, LLM fallback, and 413/429 logic are unchanged.
+
+### Implemented backpressure
+
+`run_adapter()` in `src/pipeline/workers.py` now uses a rolling task window
+of at most **C = max_concurrency**, sourced from `MAX_CONCURRENCY`/`--workers`.
+When the window is full it waits for a completion **before requesting the
+next discovery item/page**. There is no separate waiting-task queue (zero
+additional queue capacity), so outstanding fetch/parse tasks are bounded by
+C, not by the number of source URLs. Parsing occupies a slot too. A completed
+slot can be reused without waiting for the slowest task in the window.
+
+The previous semaphore bounded active fetch/parse work but could leave an
+arbitrarily large task backlog waiting on that semaphore. The new window
+also bounds task bookkeeping and discovery-driven page prefetch, without
+changing any adapter or pipeline interface. Discovery generators are closed
+on limits/errors/cancellation, child tasks are cancelled and awaited on
+failure, and unexpected task exceptions are retrieved rather than discarded.
+
+`max_concurrency` must be positive. `max_items` is an optional nonnegative
+**discovery-item** ceiling (including duplicates); zero performs no discovery.
+A discovery item may be a page containing many records, so this is not a
+record-count or byte-size limit. URL normalization/dedup and typed source-error
+accounting remain in place; database unique constraints remain authoritative.
+
+### Record accumulation audit (limitations retained)
+
+| Location | Current memory behavior |
+|---|---|
+| Shared worker pool | Returns a full `records` list; retains per-run `seen_urls` and error strings. Task backpressure does not bound these collections. |
+| Research / Startups / Products | Collect `all_records` before validation/persistence; keep URL/key sets and temporary filtered lists. Product fill-forward may re-read earlier source windows. |
+| News | Collects all enabled sources before persistence. Per-source discovery allocation is not a global persisted-record ceiling; small targets can be exceeded and filtering can cause shortfalls. |
+| Jobs | Collects and sorts source results before persistence. Stops at the accepted-record target, but may have fetched/retained substantially more candidates. |
+| Raw content | `ParsedRecord.fetch_result` retains response bodies, plus extracted fields where present. Records from a page share its fetch object, but the page stays resident while referenced. HTTP response bytes themselves are not capped by this scheduler. |
+| Enrichment / resolution | GitHub enrichment caches per run; entity resolution loads canonical entities and aliases into process memory. Neither is bounded by worker concurrency. |
+
+Dropping redundant list references would not release records still held in
+`all_records`, nor reduce the collect-before-persist peak. No additional
+vertical rewrite or silent truncation of records/errors is included here.
+End-to-end bounded memory needs bounded page/batch persistence, externalized
+lookup state and measured payload limits; simply increasing workers is not a
+memory fix.
+
+### Defensible scale-out architecture (future deployment work)
+
+Keep the **same discovery/extraction, validation, freshness, deduplication and
+resolution business rules**, while distributing bounded page/batch jobs among
+horizontal worker processes. Use a bounded durable queue with backpressure,
+leased/checkpointed pagination, retries and source-wide rate budgets; give each
+worker its own DB session and bounded connection pool. Persist idempotently to
+shared PostgreSQL, and place raw payloads in shared S3/MinIO with content hashes
+and DB provenance pointers. Do not share an `AsyncSession` between concurrent
+workers.
+
+Redis/CrawlJob settings and S3 configuration fields are scaffolding, **not a
+working distributed dispatcher or S3 persistence backend**. In particular,
+setting `RAW_STORAGE_BACKEND=s3` alone does not move raw content. Distributed
+job claiming, restart/resume, batch persistence, raw-store wiring, resolver
+consistency and PostgreSQL load testing remain to be implemented/validated.
+Source limits still apply (for example OpenAlex basic paging stops at 10,000;
+YC uses batch partitions; Hugging Face follows server cursors).
+
+Verification uses deterministic worker regressions plus existing pagination,
+pipeline, repository and DB-dedup tests with mocked sources and SQLite. These
+check correctness, cancellation and backpressure, not 500k throughput, RSS
+memory, live PostgreSQL contention or horizontal-worker recovery.
 
 ## Ethical / authorized crawling strategy
 
