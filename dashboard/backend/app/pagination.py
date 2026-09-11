@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, TypeVar, Literal
 
 from fastapi import Query
 from sqlalchemy import func, select
@@ -31,9 +31,11 @@ class PageParams:
     limit: int
     offset: int
     q: str | None = None
+    sort: str = "recent"
 
 
 def page_params(
+    sort: Literal["recent", "oldest", "name", "source", "records"] = Query("recent"),
     limit: int = Query(
         DEFAULT_PAGE_SIZE,
         ge=1,
@@ -50,7 +52,7 @@ def page_params(
     # Treat a whitespace-only query as "no filter" so an empty search box in
     # the UI does not turn into a LIKE '%%' that the planner has to think about.
     cleaned = q.strip() if q else None
-    return PageParams(limit=limit, offset=offset, q=cleaned or None)
+    return PageParams(limit=limit, offset=offset, q=cleaned or None, sort=sort)
 
 
 def _search_clause(columns: Sequence[Any], term: str) -> Any:
@@ -89,7 +91,15 @@ async def paginate(
 
     total = await session.scalar(count_stmt) or 0
 
-    stmt = stmt.order_by(order_by).limit(params.limit).offset(params.offset)
+    # Map keys to declared ORM expressions, never user-provided identifiers.
+    if params.sort == "name" and search_columns:
+        ordering = search_columns[0].asc().nulls_last()
+    elif params.sort == "source":
+        ordering = model.source_name.asc().nulls_last()
+    else:
+        timestamp = timestamp_expression(session, order_by.element)
+        ordering = (timestamp.asc() if params.sort == "oldest" else timestamp.desc()).nulls_last()
+    stmt = stmt.order_by(ordering, model.id.asc()).limit(params.limit).offset(params.offset)
     rows = (await session.execute(stmt)).scalars().all()
 
     items = [schema.model_validate(row) for row in rows]
@@ -100,3 +110,12 @@ async def paginate(
         offset=params.offset,
         has_more=params.offset + len(items) < total,
     )
+
+
+def timestamp_expression(session: AsyncSession, column: Any) -> Any:
+    """SQLite stores datetimes as text; julianday normalizes offset-bearing values.
+
+    Postgres timestamptz already orders by instant. Naive stored dates are UTC
+    by the pipeline contract; NULL stays NULL and always sorts last.
+    """
+    return func.julianday(column) if session.get_bind().dialect.name == "sqlite" else column

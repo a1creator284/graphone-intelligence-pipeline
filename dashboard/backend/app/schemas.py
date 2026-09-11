@@ -123,3 +123,72 @@ class CanonicalEntityOut(ORMModel):
     job_count: int = 0
     total_records: int = 0
     aliases: list[str] = Field(default_factory=list)
+
+
+class ProvenanceOut(ORMModel):
+    id: UUID
+    source_name: str
+    source_url: str
+    canonical_url: str
+    retrieved_at: datetime | None = None
+    http_status: int | None = None
+    content_hash: str
+    extraction_status: str | None = None
+
+
+class EntityRef(ORMModel):
+    id: UUID
+    canonical_name: str
+    normalized_name: str
+    entity_type: str
+    created_at: datetime | None = None
+
+
+class DetailContext(ORMModel):
+    collected_at: datetime | None = None
+    raw_document_id: UUID | None = None
+    provenance: ProvenanceOut | None = None
+    canonical_entity_id: UUID | None = None
+    canonical_entity: EntityRef | None = None
+
+
+class StartupDetail(StartupOut, DetailContext):
+    pass
+
+
+class ProductDetail(ProductOut, DetailContext):
+    source_external_id: str | None = None
+    metadata_json: dict | None = None
+
+
+class ResearchPaperDetail(ResearchPaperOut, DetailContext):
+    paper_external_id: str | None = None
+
+
+class NewsDetail(NewsOut, DetailContext):
+    extracted_metadata: dict | None = None
+
+
+class JobDetail(JobOut, DetailContext):
+    metadata_json: dict | None = None
+
+
+class EntityDetail(CanonicalEntityOut):
+    startups: list[StartupOut] = Field(default_factory=list)
+    products: list[ProductOut] = Field(default_factory=list)
+    jobs: list[JobOut] = Field(default_factory=list)
+    relationship_limit: int
+
+
+class ActivityItem(BaseModel):
+    id: UUID
+    vertical: str
+    title: str
+    source_name: str
+    source_url: str
+    collected_at: datetime | None = None
+
+
+class ActivityResponse(BaseModel):
+    items: list[ActivityItem]
+    limit: int
