@@ -7,18 +7,16 @@ import { API_BASE_URL } from "@/lib/api";
 interface NavItem {
   href: string;
   label: string;
-  /** Phase 1 ships the overview only; the rest are reserved routes. */
-  placeholder?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard" },
-  { href: "/startups", label: "Startups", placeholder: true },
-  { href: "/products", label: "Products", placeholder: true },
-  { href: "/research", label: "Research", placeholder: true },
-  { href: "/news", label: "News", placeholder: true },
-  { href: "/jobs", label: "Jobs", placeholder: true },
-  { href: "/entities", label: "Entities", placeholder: true },
+  { href: "/startups", label: "Startups" },
+  { href: "/products", label: "Products" },
+  { href: "/research", label: "Research" },
+  { href: "/news", label: "News" },
+  { href: "/jobs", label: "Jobs" },
+  { href: "/entities", label: "Entities" },
 ];
 
 export default function Sidebar() {
@@ -47,9 +45,6 @@ export default function Sidebar() {
               aria-current={isActive ? "page" : undefined}
             >
               <span>{item.label}</span>
-              {item.placeholder ? (
-                <span className="nav__badge">soon</span>
-              ) : null}
             </Link>
           );
         })}

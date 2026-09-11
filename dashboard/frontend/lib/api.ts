@@ -78,3 +78,102 @@ export const fetchStats = (signal?: AbortSignal) =>
 
 export const fetchHealth = (signal?: AbortSignal) =>
   apiGet<HealthResponse>("/api/health", signal);
+
+/* ------------------------------------------------------------------ *
+ * Record types. These mirror the Pydantic response models one-for-one;
+ * anything the API marks optional is optional here too, because real
+ * ingested rows genuinely do have missing timestamps and null columns.
+ * ------------------------------------------------------------------ */
+
+export interface Startup {
+  id: string;
+  entity_name: string;
+  source_name: string;
+  source_url: string;
+  employee_count?: number | null;
+  collected_at?: string | null;
+}
+
+export interface Product {
+  id: string;
+  product_name?: string | null;
+  startup_name: string;
+  source_name: string;
+  source_url: string;
+  pricing_model?: string | null;
+  collected_at?: string | null;
+}
+
+export interface ResearchPaper {
+  id: string;
+  title: string;
+  authors: string[];
+  paper_url: string;
+  github_url?: string | null;
+  github_stars?: number | null;
+  published_date?: string | null;
+  source_name: string;
+}
+
+export interface Job {
+  id: string;
+  company: string;
+  title: string;
+  url: string;
+  posted_at?: string | null;
+  is_remote?: boolean | null;
+  role_family?: string | null;
+  source_name: string;
+}
+
+export interface NewsArticle {
+  id: string;
+  title: string;
+  url: string;
+  source_name: string;
+  published_at?: string | null;
+}
+
+export interface CanonicalEntity {
+  id: string;
+  canonical_name: string;
+  normalized_name: string;
+  entity_type: string;
+  created_at?: string | null;
+  alias_count: number;
+  startup_count: number;
+  product_count: number;
+  job_count: number;
+  total_records: number;
+  aliases: string[];
+}
+
+export interface ListQuery {
+  limit: number;
+  offset: number;
+  /** Case-insensitive substring filter; omitted when blank. */
+  q?: string;
+  /** Only the entities endpoint understands this. */
+  sort?: string;
+}
+
+function buildQuery(query: ListQuery): string {
+  const params = new URLSearchParams({
+    limit: String(query.limit),
+    offset: String(query.offset),
+  });
+  // Only send q/sort when meaningful -- a trailing "&q=" would make the URL
+  // (and therefore the cache key and the backend's job) needlessly noisy.
+  if (query.q && query.q.trim()) params.set("q", query.q.trim());
+  if (query.sort) params.set("sort", query.sort);
+  return params.toString();
+}
+
+/** Fetch one bounded page from any of the list endpoints. */
+export function fetchPage<T>(
+  path: string,
+  query: ListQuery,
+  signal?: AbortSignal,
+): Promise<Page<T>> {
+  return apiGet<Page<T>>(`${path}?${buildQuery(query)}`, signal);
+}

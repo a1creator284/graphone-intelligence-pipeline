@@ -10,16 +10,28 @@ import {
   fetchStats,
 } from "@/lib/api";
 
-const CARDS: { key: keyof DashboardStats; label: string; hint: string }[] = [
-  { key: "startups", label: "Startups", hint: "Companies ingested" },
-  { key: "products", label: "Products", hint: "AI products & models" },
-  { key: "research_papers", label: "Research Papers", hint: "Papers indexed" },
-  { key: "jobs", label: "Jobs", hint: "Open postings" },
-  { key: "news", label: "News", hint: "Articles collected" },
+const CARDS: {
+  key: keyof DashboardStats;
+  label: string;
+  hint: string;
+  /** Drill-down target; omitted for counts with no dedicated view. */
+  href?: string;
+}[] = [
+  { key: "startups", label: "Startups", hint: "Companies ingested", href: "/startups" },
+  { key: "products", label: "Products", hint: "AI products & models", href: "/products" },
+  {
+    key: "research_papers",
+    label: "Research Papers",
+    hint: "Papers indexed",
+    href: "/research",
+  },
+  { key: "jobs", label: "Jobs", hint: "Open postings", href: "/jobs" },
+  { key: "news", label: "News", hint: "Articles collected", href: "/news" },
   {
     key: "canonical_entities",
     label: "Canonical Entities",
     hint: "After entity resolution",
+    href: "/entities",
   },
   {
     key: "raw_documents",
@@ -97,6 +109,7 @@ export default function DashboardPage() {
               key={card.key}
               label={card.label}
               hint={card.hint}
+              href={card.href}
               loading={loading}
               value={stats ? stats[card.key] : undefined}
             />
@@ -112,9 +125,10 @@ export default function DashboardPage() {
           own SQLAlchemy models — it never crawls, writes, or mutates data.
         </p>
         <p>
-          Startups, Products, Research, News, Jobs and Entities views are
-          reserved for a later phase; their API endpoints are already live and
-          paginated.
+          Every count above is a live query and links through to a paginated,
+          searchable table of the underlying rows. The Entities view also
+          shows how many startups, products and jobs resolved onto each
+          canonical identity.
         </p>
       </div>
 
