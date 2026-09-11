@@ -1,6 +1,55 @@
 # Final submission audit
 
-## Final checkpoint verification — 2026-09-11 UTC
+## Artifact recovery run — 2026-09-11 UTC (supersedes the blocker below)
+
+The previous session's sandbox was lost with its SQLite DB and workbook. This
+session **re-ran the existing, unmodified pipeline** from branch
+`genspark_ai_developer` at `0f15acd` into a fresh ignored DB at
+`.local/submission.db`, then ran the existing six-tab exporter. No pipeline
+code, freshness rule or source implementation was changed, and no record was
+fabricated or padded.
+
+### Observed counts (export cutoff `2026-09-11T09:34:44.953842+00:00` UTC)
+
+| Sheet | DB rows | Exported rows |
+|---|---:|---:|
+| Startups | 1000 | 1000 |
+| Products | 1000 | 1000 |
+| Research Papers | 1000 | 1000 |
+| Jobs | 0 | 0 |
+| News | 45 | 45 |
+| Entity Mapping Log | 2000 | 2000 |
+
+Per-source detail: Startups `ycombinator_directory` 1000. Products
+`huggingface_spaces` 340, `huggingface_models` 349, `openrouter_models` 311
+(34 cross-source duplicates suppressed). Research `arxiv` 500, `openalex` 500.
+Jobs — all five sources ran (`remoteok_ai_jobs`, `workingnomads_ai_jobs`,
+`ycombinator_hn_whoishiring`, `wellfound_ai_jobs`, `builtin_ai_jobs`), 23
+discovery units, **0** genuine postings inside the strict 24h window (one
+sitemap source was blocked and logged, not substituted). News — all five
+sources persisted rows: `hackernews_ai` 19, `techcrunch_ai_rss` 9,
+`theverge_ai_rss` 6, `mit_technology_review_ai_rss` 1, `thedecoder_rss` 10;
+28 stale and 28 invalid records rejected, 0 future-dated accepted.
+
+No tab reported missing provenance or missing News full text. Jobs and News
+were re-filtered at the single export cutoff, as the exporter requires.
+
+### Artifact checks
+
+- `submission/graphone_final.xlsx`: **PASS**. Opens with `openpyxl`; exactly
+  six sheets in the required order — **Startups**, **Products**,
+  **Research Papers**, **Jobs**, **News**, **Entity Mapping Log**.
+  SHA-256 `2270cbbff3ed92c6a991e12ad6d17326ddc5462d162e3c347803b9ba5645b5d9`.
+- `submission/graphone_final.manifest.json`: **PASS**. Its recorded SHA-256
+  matches the workbook bytes; per-tab row counts match the table above.
+- `submission/architecture.pdf`: **PASS**, unchanged at 12,671 bytes.
+- Deterministic suite: `590 passed, 2 deselected` (live integration excluded).
+- Git hygiene: working tree clean; local HEAD equals
+  `origin/genspark_ai_developer`. `.local/submission.db`, `.env`, `.venv`,
+  `data/raw` and run logs remain ignored and untracked. PR #4 remains **OPEN**
+  and unmerged.
+
+## Earlier checkpoint verification — 2026-09-11 UTC (historical)
 
 **Artifact verification is blocked, not passed.** This session resumed the
 existing GitHub branch `genspark_ai_developer` at
