@@ -162,3 +162,149 @@ async def test_activity_handles_legacy_missing_timestamps():
     assert response.items[0].title == "Aware"
     assert response.items[-1].collected_at is None
     assert session.execute.await_count == 5
+
+
+# Task 3: exercise the entity explorer against stored database relationships.
+@pytest.mark.parametrize("term", ["Displayed", " NORMALIZED ONLY ", "Needle", "needle alternate"])
+async def test_entity_search_names_normalized_and_multiple_aliases(client, api_session, term):
+    entity = CanonicalEntity(canonical_name="Displayed Corp", normalized_name="normalized only")
+    api_session.add_all([entity, CanonicalEntity(canonical_name="Other", normalized_name="other")])
+    await api_session.flush()
+    for alias in ("Needle alias", "Needle alternate"):
+        api_session.add(EntityAlias(canonical_entity_id=entity.id, alias=alias, normalized_alias=alias.lower()))
+    await api_session.commit()
+    result = (await client.get("/api/entities", params={"q": term, "limit": 1})).json()
+    assert result["total"] == 1  # Two matching aliases must not duplicate an entity.
+    assert result["has_more"] is False
+    assert result["items"][0]["id"] == str(entity.id)
+    assert result["items"][0]["aliases"] == ["Needle alias", "Needle alternate"]
+    assert (await client.get("/api/entities", params={"q": term, "offset": 1})).json()["items"] == []
+    assert (await client.get("/api/entities", params={"q": "   "})).json()["total"] == 2
+
+
+@pytest.mark.parametrize("field", ["canonical_name", "normalized_name", "alias"])
+@pytest.mark.parametrize("term", ["%", "_", "\\", "' OR 1=1 --"])
+async def test_entity_search_treats_wildcards_and_sql_as_literal_text(client, api_session, field, term):
+    entity = CanonicalEntity(canonical_name="Literal", normalized_name="literal")
+    if field != "alias":
+        setattr(entity, field, f"Literal {term} marker")
+    api_session.add_all([entity, CanonicalEntity(canonical_name="Distractor", normalized_name="distractor")])
+    await api_session.flush()
+    if field == "alias":
+        api_session.add(EntityAlias(canonical_entity_id=entity.id, alias=f"Literal {term} marker", normalized_alias="literal alias"))
+    await api_session.commit()
+    response = await client.get("/api/entities", params={"q": term})
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert [row["id"] for row in response.json()["items"]] == [str(entity.id)]
+    assert (await client.get("/api/entities")).json()["total"] == 2
+
+
+@pytest.mark.parametrize("sort,expected", [
+    ("records", [4, 1, 2, 3]), ("name", [1, 2, 3, 4]),
+    ("recent", [3, 1, 2, 4]), ("name; DROP TABLE canonical_entities", [4, 1, 2, 3]),
+])
+async def test_entity_sort_and_pagination_are_deterministic(client, api_session, sort, expected):
+    # Reverse insertion order, equal names/timestamps/counts, unique normalized names.
+    for index, name, age, links in [(4, "Zeta", -1, 2), (3, "Beta", 1, 0), (2, "Alpha", 0, 1), (1, "Alpha", 0, 1)]:
+        entity = CanonicalEntity(id=UUID(int=index), canonical_name=name, normalized_name=f"entity {index}", created_at=NOW + timedelta(hours=age))
+        api_session.add(entity)
+        await api_session.flush()
+        for link in range(links):
+            api_session.add(Startup(entity_name=name, canonical_entity_id=entity.id, source_name="test", source_url=f"https://example.com/{index}/{link}"))
+    await api_session.commit()
+    params = {"sort": sort, "q": "entity"}
+    whole = (await client.get("/api/entities", params=params)).json()
+    assert [row["id"] for row in whole["items"]] == [str(UUID(int=i)) for i in expected]
+    paged = []
+    for offset in range(4):
+        result = (await client.get("/api/entities", params={**params, "limit": 1, "offset": offset})).json()
+        assert result["total"] == 4
+        assert result["offset"] == offset and result["limit"] == 1
+        assert result["has_more"] is (offset < 3)
+        paged.extend(result["items"])
+    assert paged == whole["items"]
+    beyond = (await client.get("/api/entities", params={**params, "offset": 4})).json()
+    assert beyond["total"] == 4 and beyond["items"] == [] and beyond["has_more"] is False
+
+
+@pytest.mark.parametrize("params", [
+    {"limit": 0}, {"limit": -1}, {"limit": 101}, {"offset": -1},
+    {"limit": "invalid"}, {"q": "x" * 121},
+])
+async def test_entity_list_rejects_unsafe_pagination_and_search(client, params):
+    assert (await client.get("/api/entities", params=params)).status_code == 422
+
+
+async def test_entity_list_empty_database_and_unmatched_search(client, api_session):
+    for params in ({}, {"q": "missing"}):
+        result = (await client.get("/api/entities", params=params)).json()
+        assert result["items"] == [] and result["total"] == 0 and result["has_more"] is False
+    await _seed_entities(api_session)
+    result = (await client.get("/api/entities?q=missing")).json()
+    assert result["items"] == [] and result["total"] == 0 and result["has_more"] is False
+
+
+async def test_entity_detail_twenty_per_type_exact_counts_and_no_inferred_links(client, api_session):
+    target, other, empty = [CanonicalEntity(canonical_name="Same name", normalized_name=name, entity_type="company", created_at=NOW) for name in ("target", "other", "empty")]
+    api_session.add_all([target, other, empty])
+    await api_session.flush()
+    unlinked = []
+    expected = {}
+    for model, kind, fields in (
+        (Startup, "startups", {"entity_name": "Same name"}),
+        (Product, "products", {"product_name": "Same name", "startup_name": "Same name"}),
+        (Job, "jobs", {"title": "Same name", "company": "Same name"}),
+    ):
+        required = {"posted_at": NOW} if model is Job else {}
+        rows = []
+        for i in reversed(range(24)):
+            # Relationships are FK-based even when the record name differs.
+            row_fields = {key: f"Different recorded name {i}" for key in fields}
+            url = {"url" if model is Job else "source_url": f"https://example.com/{kind}/{i}"}
+            row = model(id=UUID(int=i+1), canonical_entity_id=target.id, source_name="test", collected_at=NOW + timedelta(hours=i % 2), **row_fields, **url, **required)
+            api_session.add(row)
+            rows.append(row)
+        expected[kind] = [str(row.id) for row in sorted(rows, key=lambda row: (-row.collected_at.timestamp(), str(row.id)))][:20]
+        # Identical names with no FK or with a different FK are not target links.
+        for index, entity_id in enumerate((None, other.id)):
+            url = {"url" if model is Job else "source_url": f"https://example.com/{kind}/distractor/{index}"}
+            row = model(canonical_entity_id=entity_id, source_name="test", **fields, **url, **required)
+            api_session.add(row)
+            if entity_id is None:
+                unlinked.append((kind, row))
+    for i in reversed(range(25)):
+        api_session.add(EntityAlias(canonical_entity_id=target.id, alias=f"Alias {i:02}", normalized_alias=f"alias {i:02}"))
+    await api_session.commit()
+
+    response = await client.get(f"/api/entities/{target.id}")
+    assert response.status_code == 200
+    detail = response.json()
+    for key in ("id", "canonical_name", "normalized_name", "entity_type", "created_at"):
+        assert detail[key]
+    assert detail["canonical_name"] == "Same name" and detail["normalized_name"] == "target"
+    assert detail["relationship_limit"] == 20
+    assert detail["alias_count"] == 25
+    assert detail["aliases"] == [f"Alias {i:02}" for i in range(20)]
+    assert detail["startup_count"] == detail["product_count"] == detail["job_count"] == 24
+    assert detail["total_records"] == 72
+    for kind, ids in expected.items():
+        assert [row["id"] for row in detail[kind]] == ids
+        record = (await client.get(f"/api/{kind}/{ids[0]}")).json()
+        assert record["canonical_entity_id"] == record["canonical_entity"]["id"] == str(target.id)
+    assert (await client.get(f"/api/entities/{target.id}")).json() == detail
+    # Searching an alias outside the preview must still find the stored entity.
+    listed = (await client.get("/api/entities?q=Alias%2024")).json()["items"][0]
+    for key in ("startup_count", "product_count", "job_count", "total_records", "aliases", "alias_count"):
+        assert listed[key] == detail[key]
+    for limit in (0, -1, 21, 50, 51):
+        assert (await client.get(f"/api/entities/{target.id}", params={"relationship_limit": limit})).status_code == 422
+    smaller = (await client.get(f"/api/entities/{target.id}?relationship_limit=1")).json()
+    assert smaller["total_records"] == 72
+    assert all(len(smaller[kind]) == 1 for kind in expected)
+    orphan = (await client.get(f"/api/entities/{empty.id}")).json()
+    assert orphan["total_records"] == orphan["startup_count"] == orphan["product_count"] == orphan["job_count"] == orphan["alias_count"] == 0
+    assert orphan["aliases"] == orphan["startups"] == orphan["products"] == orphan["jobs"] == []
+    for kind, row in unlinked:
+        record = (await client.get(f"/api/{kind}/{row.id}")).json()
+        assert record["canonical_entity_id"] is None and record["canonical_entity"] is None

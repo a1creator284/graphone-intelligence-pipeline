@@ -102,10 +102,12 @@ function EntityFields({ data, navigate }: { data: EntityDetail; navigate: (value
     { kind: "jobs" as const, label: "Jobs", total: data.job_count, rows: data.jobs.map((r) => ({ id: r.id, title: r.title, source: r.source_name })) },
   ];
   return <>
-    <Section title="Resolved identity"><dl className="detail-grid">
+    <Section title="Resolved identity">
+      <p className="cell-sub">Creation time is shown in your local timezone. Missing values are not inferred.</p>
+      <dl className="detail-grid">
       <Field label="Normalized name">{data.normalized_name}</Field>
       <Field label="Type"><Badge tone="accent">{data.entity_type}</Badge></Field>
-      <Field label="Created">{formatDateTime(data.created_at)}</Field>
+      <Field label="Created">{data.created_at ? formatDateTime(data.created_at) : "Not recorded"}</Field>
       <Field label="Entity ID"><code>{data.id}</code></Field>
     </dl></Section>
     <div className="entity-counts" aria-label="Linked record counts">
@@ -118,7 +120,7 @@ function EntityFields({ data, navigate }: { data: EntityDetail; navigate: (value
       {data.alias_count > data.aliases.length && <p className="cell-sub">Showing {data.aliases.length} of {data.alias_count} aliases (API limit {data.relationship_limit}).</p>}
     </Section>
     <Section title="Linked records">
-      <p className="cell-sub">Stored relationships only. Up to {data.relationship_limit} records per type, newest collected first.</p>
+      <p className="cell-sub">Stored relationships only. Up to {data.relationship_limit} records per type, newest collected first, then ID for ties. Counts include all stored links, not just this preview.</p>
       {groups.map((group) => <div className="relationship-group" key={group.kind}>
         <h4>{group.label} <span className="muted">{group.rows.length} of {group.total}</span></h4>
         {group.rows.length ? group.rows.map((row) => <button type="button" className="relationship-link" key={row.id} onClick={() => navigate({ kind: group.kind, id: row.id })}>

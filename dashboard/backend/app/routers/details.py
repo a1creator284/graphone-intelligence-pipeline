@@ -70,7 +70,10 @@ async def job_detail(record_id: UUID, session: AsyncSession = Depends(get_sessio
 @router.get("/entities/{record_id}", response_model=EntityDetail)
 async def entity_detail(
     record_id: UUID,
-    relationship_limit: int = Query(20, ge=1, le=50),
+    relationship_limit: int = Query(
+        20, ge=1, le=20,
+        description="Maximum linked records per type and alias preview size (1–20).",
+    ),
     session: AsyncSession = Depends(get_session),
 ):
     entity = await require_record(session, CanonicalEntity, record_id)
