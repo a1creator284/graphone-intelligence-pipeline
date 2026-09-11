@@ -10,7 +10,8 @@ All five ingestion verticals, entity resolution, LLM orchestration and the
 six-tab XLSX exporter are implemented. The implemented architecture is in
 [`submission/architecture.pdf`](submission/architecture.pdf). Historical
 phase logs are retained in `docs/DEVELOPMENT_HANDOFF.md`; the final submission
-section below and the workbook manifest supersede earlier live-run counts.
+evidence section below records current verification limits separately from
+earlier live-run counts.
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -24,7 +25,7 @@ section below and the workbook manifest supersede earlier live-run counts.
 | 8 | LLM orchestration: 3 providers, fallback, chunking, 413 handling, metrics | ✅ Done |
 | 12 | Entity resolution: normalization, aliases, fuzzy matching, mapping log | ✅ Done |
 | 9-11 | Startups + products pipelines | ✅ Done |
-| 13-16 | Export, architecture and assessment evidence | Six-tab XLSX/manifest and architecture PDF delivered; per-run counters exist, not a separate quality dashboard |
+| 13-16 | Export, architecture and assessment evidence | Exporter implemented; architecture PDF verified; original final XLSX/manifest unavailable in current checkout (see evidence below) |
 
 `--vertical research`, `news`, `jobs`, `startups` and `products` **actually
 run** end-to-end (discovery → extraction/enrichment → schema validation →
@@ -37,6 +38,27 @@ only ever those a source actually returned, deduplicated on the source's own
 URL and artifact id, and a shortfall is logged as `products_target_not_met`
 rather than padded. Product Hunt remains registered but disabled — it requires
 an OAuth token this deployment does not hold and has no adapter.
+
+## Final submission evidence — 2026-09-11 checkpoint
+
+- Prior-session counts reported by the user: **Startups 1000; Products 1000;
+  Research Papers 1000; Jobs 0; News 45**. Jobs/News were not padded because
+  strict 24-hour freshness and source limitations prevented reaching targets.
+  All five sources in each vertical were reportedly exercised; no collection
+  was rerun during this checkpoint.
+- **Verification blocker:** `submission/graphone_final.xlsx`,
+  `submission/graphone_final.manifest.json` and `.local/submission.db` are absent
+  from this sandbox. These counts are therefore not independently DB-verified;
+  workbook opening, actual sheet order, row comparison and manifest/hash checks
+  remain unverified. Restore the original files; do not rebuild or recollect.
+- Required sheet order: `Startups`, `Products`, `Research Papers`, `Jobs`,
+  `News`, `Entity Mapping Log` (confirmed in the exporter, not the missing XLSX).
+- `submission/architecture.pdf` is unchanged and readable: four pages, SHA-256
+  `669e7b74add2a2cfbaafe0b7e868611939449f072ddff92166395a89861b92e1`.
+- Final deterministic pytest: **590 passed, 2 live integration tests deselected,
+  64 warnings**. No pipeline code or freshness rules changed. PR #4 remains
+  open and unmerged. See [`docs/FINAL_AUDIT.md`](docs/FINAL_AUDIT.md) for the
+  observed evidence, Git hygiene qualifications and remaining limitations.
 
 ## Historical live verification (earlier runs; not final counts)
 
