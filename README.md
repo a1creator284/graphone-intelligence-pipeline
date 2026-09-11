@@ -6,9 +6,11 @@ assessment.
 
 ## Project status (honest, not aspirational)
 
-This repo is being built in phases (see `docs/DEVELOPMENT_HANDOFF.md` for the
-full phase-by-phase log). **Phases 1-8 plus Phase 12 (entity resolution) are
-implemented and test-verified as of this commit (286 passing tests):**
+All five ingestion verticals, entity resolution, LLM orchestration and the
+six-tab XLSX exporter are implemented. The implemented architecture is in
+[`submission/architecture.pdf`](submission/architecture.pdf). Historical
+phase logs are retained in `docs/DEVELOPMENT_HANDOFF.md`; the final submission
+section below and the workbook manifest supersede earlier live-run counts.
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -22,7 +24,7 @@ implemented and test-verified as of this commit (286 passing tests):**
 | 8 | LLM orchestration: 3 providers, fallback, chunking, 413 handling, metrics | ✅ Done |
 | 12 | Entity resolution: normalization, aliases, fuzzy matching, mapping log | ✅ Done |
 | 9-11 | Startups + products pipelines | ✅ Done |
-| 13-16 | Quality metrics, six-tab export, architecture.pdf, final audit | ⏳ Not yet built |
+| 13-16 | Export, architecture and assessment evidence | Six-tab XLSX/manifest and architecture PDF delivered; per-run counters exist, not a separate quality dashboard |
 
 `--vertical research`, `news`, `jobs`, `startups` and `products` **actually
 run** end-to-end (discovery → extraction/enrichment → schema validation →
@@ -36,7 +38,7 @@ URL and artifact id, and a shortfall is logged as `products_target_not_met`
 rather than padded. Product Hunt remains registered but disabled — it requires
 an OAuth token this deployment does not hold and has no adapter.
 
-## Live verification (updated — network egress is now available)
+## Historical live verification (earlier runs; not final counts)
 
 Earlier phases of this project were developed in a sandbox whose egress was
 restricted to `pypi.org`, `npmjs.org`, and `github.com`. **That restriction
@@ -144,20 +146,51 @@ src/
 tests/          unit tests (no live network) + tests/test_http_integration.py (opt-in, live)
   fixtures/     captured arXiv/OpenAlex API response fixtures (real responses)
 ```
-(`llm/`, `resolution/`, `export/` exist as package stubs for Phases 8+.)
+`llm/` implements the provider orchestrator; `resolution/` implements entity
+mapping; `export/__init__.py` implements the six-tab XLSX snapshot. They are
+not stubs. All five vertical orchestrators live in `pipeline/`.
 
 ## Setup
 
 ```bash
-cp .env.example .env        # fill in DB/Redis URLs and any LLM/GitHub keys
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-docker compose up -d postgres redis
+cp .env.example .env        # local only; never commit credentials
 ```
+
+For a local assessment run, no PostgreSQL, Redis or LLM keys are required:
+
+```bash
+mkdir -p .local
+export DATABASE_URL="sqlite+aiosqlite:///$(pwd)/.local/submission.db"
+export RAW_STORAGE_LOCAL_PATH="$(pwd)/.local/raw"
+```
+
+Alternatively, configure PostgreSQL in `DATABASE_URL` and start the provided
+`docker compose up -d postgres redis`. Redis is scaffolding, not an active
+CLI dispatcher. Environment variables override `.env`. Important settings:
+
+- `DATABASE_URL`, `RAW_STORAGE_LOCAL_PATH`: persistence and local evidence.
+- `MAX_CONCURRENCY` / `--workers`, `REQUEST_TIMEOUT_SECONDS`, `MAX_RETRIES`,
+  `RETRY_BASE_DELAY_SECONDS`, `RETRY_MAX_DELAY_SECONDS`: bounded crawl/retry.
+- `OPENALEX_MAILTO`: optional source contact; `GITHUB_TOKEN`: optional
+  enrichment token. Without it GitHub enrichment may stop at the rate limit.
+- `GEMINI_API_KEY`/`GEMINI_MODEL`, `GROQ_API_KEY`/`GROQ_MODEL`,
+  `DEEPSEEK_API_KEY`/`DEEPSEEK_MODEL`: needed only when explicitly calling the
+  implemented LLM component. Select provider-supported Flash/Llama/DeepSeek
+  models; no current CLI vertical invokes the component.
+- `LLM_PROVIDER_ORDER` must be a JSON array in the environment, for example
+  `'["gemini","groq","deepseek"]'`; see the existing `.env.example`.
+- Jobs/News hardcode 24 hours and zero future tolerance, regardless of the
+  more permissive general-purpose freshness configuration fields.
+- Google Sheets and S3 settings are not a working publishing/raw-store
+  backend. The implemented submission export is local XLSX.
 
 ## Running tests
 
 ```bash
-pytest                      # unit tests only, no live network required (249 tests)
+pytest                      # default deterministic suite; no live network required
 pytest -m integration       # opt-in: hits the real GitHub API (2 tests)
 ```
 
@@ -190,8 +223,40 @@ asyncio.run(main())
 ```bash
 python -m src.main --help
 python -m src.main --vertical research --target 1000 --workers 50   # runs end-to-end
-python -m src.main --vertical news --dry-run                        # reports registered sources only (Phase 6+)
+python -m src.main --vertical news --dry-run                        # reports enabled sources only; does not collect
 ```
+
+### Live collection and final export
+
+Use the same configured DB and raw-storage path for every command. Check
+existing DB counts before rerunning completed verticals: `--target` applies
+to a run, not an automatic fill-to-total operation. For a genuinely new DB:
+
+```bash
+python -m src.main --vertical startups --target 1000 --workers 10
+python -m src.main --vertical products --target 1000 --workers 10
+python -m src.main --vertical research --target 1000 --workers 10
+python -m src.main --vertical jobs --target 1000 --workers 10
+python -m src.main --vertical news --target 1000 --workers 10
+# Stop collection before taking the cross-tab snapshot.
+python -m src.main --export --output submission/graphone_final.xlsx
+```
+
+The exporter requires existing tables/data; it never silently creates an
+empty database. Jobs and News are filtered again at one export-time UTC
+cutoff: **[export time - 24h, export time]**, inclusive, zero future tolerance.
+Rows age after export; rerun Jobs/News and export for a later submission time.
+Source exhaustion, strict-date rejection and access failures may leave fewer
+than 1,000 genuine rows. Never pad a shortfall or broaden the time window.
+
+Exactly six sheets are written, in this order: **Startups, Products, Research
+Papers, Jobs, News, Entity Mapping Log**. All domain fields, provenance joins,
+canonical names and mapping decisions are included. News full text is included
+when available under the configured raw root. Long strings use continuation
+columns (`__part_2`, etc.), not extra sheets; cells are literal, not formulas.
+`submission/graphone_final.manifest.json` contains the UTC cutoff, per-tab
+counts, excluded/missing-evidence counts and the workbook SHA-256. No Google
+Sheet is created. SQLite files, raw evidence and local logs stay ignored.
 
 ## Research paper pipeline (Phase 4)
 
@@ -229,16 +294,17 @@ python -m src.main --vertical news --dry-run                        # reports re
 2. `TechCrunchAIAdapter` — TechCrunch AI RSS feed.
 3. `TheVergeAIAdapter` — The Verge AI RSS feed.
 4. `MITTechReviewAIAdapter` — MIT Technology Review AI RSS feed.
-5. `SyncedReviewAdapter` — Synced Review RSS feed.
+5. `TheDecoderAdapter` — The Decoder RSS feed. Synced Review is retained but
+   disabled because its feed was stale; it is not one of the five active sources.
 
 **Key Features:**
 - **Anti-Hallucination Guarantees:** Missing data results in rejection, never fabrication. If full-text extraction fails or critical metadata is absent, the record is discarded (`extraction_failed` or `invalid_records`).
-- **Freshness Filtering:** Implements strict 24-hour window validation (`is_fresh`) using `Date_Engine`, with a configurable clock skew tolerance to handle minor server clock drift (e.g., rejecting future-dated articles).
+- **Freshness Filtering:** Strict timezone-qualified publication dates, hardcoded 24-hour window and zero clock skew. HN submission time and article modification time do not substitute for publication time.
 - **Full-Text Extraction Requirement:** Uses `trafilatura` (with `newspaper3k` fallback) to extract article text. Enforces a minimum of 100 characters, automatically rejecting stub articles.
-- **Deduplication Strategy:** Implements URL-based per-source deduplication for news records (unlike global URL deduplication for research), and content-hash deduplication for raw document provenance.
+- **Deduplication Strategy:** News performs normalized URL checks across sources and runs; repository uniqueness remains a second defense. Raw document provenance is content-hash deduplicated.
 - **Content-Addressable Storage:** Deterministic SHA-256 hash-based local storage for full-text, ensuring the system is migration-ready for S3/MinIO.
 
-**Environment Note:** The news endpoints are unreachable from the initial restricted sandbox environment (egress restricted to pypi, npmjs, github). Adapters will be verified against live sources post-deployment.
+**Access note:** Live sources are exercised during submission collection. A registered source may still yield zero accepted rows because of access failures, missing dates/text or an empty freshness window. See the final collection evidence rather than historical egress assumptions.
 
 ## Jobs pipeline (Phase 7)
 
@@ -248,20 +314,22 @@ python -m src.main --vertical news --dry-run                        # reports re
 2. `WorkingNomadsAIAdapter` — JSON API filtered for data/AI categories.
 3. `YCombinatorWhoIsHiringAdapter` — Algolia search targeting "Ask HN: Who is hiring?" thread comments.
 4. `WellfoundAIAdapter` — XML Sitemap discovery targeting `JobPosting` JSON-LD schema on job pages.
-5. `BuiltInAIAdapter` — XML Sitemap discovery targeting `JobPosting` JSON-LD schema.
+5. `BuiltInAIAdapter` — public, server-rendered AI listing (first page only),
+   then actual job links and `JobPosting` JSON-LD. The old sitemap did not work.
 
 **Key Features:**
 - **JSON-LD Structured Extraction:** Relies strictly on `application/ld+json` schema standard blocks for sitemap-based adapters. Eliminates hallucination (e.g., guessing missing dates) by explicitly rejecting properties not structurally encoded in the DOM.
 - **Provenance Linkage:** The payload of any job fetching operation is immutably stored in the `RawDocumentRepository` immediately prior to structured persistence, binding the raw payload explicitly to the `JobRecord` using the `raw_document_id` foreign key.
 - **Anti-Hallucination:** Heuristics strictly fallback to nothing if parsing boundaries fail. Required properties like URL, title, source name, and posted date must resolve accurately.
-- **Freshness Validation:** Utilizes the shared `Date_Engine` (Phase 5) and strict 24-hour window configuration via `is_fresh` filtering. Future-dated bounds and excessively stale limits correctly trap out-of-bounds postings natively.
-- **Database-Level Deduplication:** Uses `INSERT ... ON CONFLICT DO NOTHING` on the exact `(source_name, url)` pair matching mechanism ensuring DB idempotency natively supports repeated idempotent CLI crawling.
+- **Freshness Validation:** Strict posting timestamp parser rejects naive/date-only values. `is_fresh` uses a hardcoded 24-hour window and zero future allowance; date fields are verified against raw source evidence.
+- **Deduplication:** Global normalized source/job URL checks run before persistence; `(source_name, url)` database uniqueness and idempotent upserts provide an additional defense.
 - **Deterministic Testing:** Mocked adapters run without relying on live website networks, ensuring `pytest` pipelines run flawlessly within sandbox egress bounds.
 
 ## LLM orchestration engine (Phase 8)
 
-`src/llm/orchestrator.py` is the central engine that every LLM-dependent
-phase (startups/products enrichment, entity resolution) will route through.
+`src/llm/orchestrator.py` is the implemented engine available for explicit
+LLM-dependent extraction. The current structured-source verticals and entity
+resolver are deterministic and do not invoke it.
 It is provider-agnostic and returns **validated Pydantic models**, never raw
 text.
 
@@ -294,9 +362,10 @@ concatenating the chunks reproduces the original payload **exactly**.
 
 A `413 PayloadTooLargeError` is deliberately *not* retried as-is — retrying
 an oversized payload unchanged just fails again. Instead the orchestrator
-recursively halves the payload and re-submits the pieces, so a 413 triggers
-the chunking path rather than an infinite retry loop. Recursion bottoms out
-at a single character, where the error is re-raised honestly.
+recursively halves the payload and re-submits the pieces. Recursion is bounded
+by `LLM_MAX_SPLIT_DEPTH` (default 8) and the one-character stop; irreducible
+payloads re-raise honestly. Validated duplicate result objects are removed
+without synthesizing fields.
 
 ### Observability
 
@@ -305,13 +374,10 @@ Every provider attempt persists one `LLMRequest` row recording `model`,
 fully reconstructable after the fact — including the attempts that failed,
 not just the one that eventually succeeded.
 
-**Note:** the Phase 8 engine is fully built and unit-tested (18 tests across
-`test_llm_providers.py`, `test_llm_orchestrator.py`, and `test_chunker.py`),
-but is **not yet wired into any CLI vertical** — no vertical currently needs
-LLM extraction. It gets consumed by the startups/products pipelines in
-Phases 9-11. No live LLM calls have been made, because no API keys are
-configured in this environment; provider tests are `respx`-mocked against
-each vendor's documented response shape.
+**Note:** the engine is implemented and unit-tested but **not wired into any
+CLI vertical**. No live LLM calls were made in finalization because provider
+keys/models were not configured. Provider/fallback/413/429 tests are mocked;
+they are not evidence of a successful live Flash/Llama/DeepSeek request.
 
 ## Date engine and freshness (Phase 5)
 
@@ -375,10 +441,9 @@ Two anti-fabrication guarantees matter here:
   `canonical_entity_id` and confidence 0.0 — still audited, never
   substituted with a placeholder.
 
-Wired into the jobs pipeline today (`canonical_entity_id` is stamped on every
-persisted `Job`); resolution failure is caught and degrades to a null link
-rather than dropping the record. `Startup` and `Product` carry the same FK
-column and will call the identical resolver when Phases 9-11 land.
+Wired into Jobs, Startups and Products; `canonical_entity_id` records each
+successful resolution. Resolution failures degrade to a null link rather
+than inventing a company or dropping otherwise valid source data.
 
 A scale-out candidate lookup could replace the in-process dict/`extractOne`
 scan with a database-backed index while retaining the resolver interface and
@@ -469,27 +534,34 @@ memory, live PostgreSQL contention or horizontal-worker recovery.
 
 ## Ethical / authorized crawling strategy
 
-Tiered, documented per source in `src/config/sources.py`: official API >
-RSS/Atom > sitemap > polite HTTP crawl > permitted browser rendering. No
-CAPTCHA-solving, no credential bypass, no ignoring `robots.txt`. A blocked
-source is recorded (`BlockedSourceError`) and the pipeline moves on — it
-does not retry or attempt to defeat the block.
+Documented per source in `src/config/sources.py`: official API > RSS/Atom >
+sitemap > public HTTP/structured HTML. No CAPTCHA solving or credential
+bypass is implemented. A genuine access block is recorded and not bypassed.
+JS-only sources may produce no records: Playwright is installed but there is
+no implemented browser fallback. Operators must review source permissions
+and robots rules; automated robots.txt enforcement is not implemented.
 
-## Next phases
+## Remaining limitations
 
-Phases 8 (LLM orchestration) and 12 (entity resolution) are complete.
-Immediate priorities, in order:
+- Five enabled Jobs/News adapters do not guarantee five nonzero contributions
+  or 1,000 records within 24 hours. Wellfound can block access; Working Nomads
+  can time out; BuiltIn often provides date-only timestamps that must be
+  rejected. HN publication/date/role parsing is deliberately conservative.
+- Startups, Products and Research store source URLs/hash provenance but not
+  complete raw response bytes. News stores extracted text; Jobs stores raw
+  response text locally. Local paths in XLSX are not portable public links.
+- Missing prices, employee counts and GitHub metadata remain null. Product
+  Hunt is disabled; Papers With Code and Synced Review are disabled historical
+  sources. GitHub enrichment can stop early because of rate limits.
+- No live LLM or Google Sheets publication is claimed. No turnkey distributed
+  dispatcher/S3 backend, browser fallback or 500k end-to-end proof exists.
+  Infrastructure-only scale-up (more RAM/CPU, PostgreSQL configuration and
+  bounded worker tuning) needs no business-rule change, but source limits and
+  growing record/resolver/export memory remain. Horizontal distribution needs
+  the work described above; simply adding replicas is insufficient.
+- The original assessment PDF was not provided, so unknown exact-column or
+  other additional clauses cannot be certified.
 
-1. ~~Replace the dead Papers With Code source~~ — **done**: replaced by
-   OpenAlex, with the PWC entry disabled rather than deleted.
-2. **Phases 9-11: startups + products pipelines.** Note the YC Algolia
-   endpoint returns HTTP 403 and Product Hunt's GraphQL API requires an
-   OAuth token — source access must be re-verified before these are built.
-3. **Phase 14: six-tab export.** Five of the six tabs already have backing
-   tables; the Entity Mapping Log tab is now populated by Phase 12.
-4. **Phases 13, 15, 16** — quality/metrics layer, architecture
-   documentation (`architecture.pdf`), and the final requirement-matrix
-   audit.
-
-See `docs/DEVELOPMENT_HANDOFF.md` for the full phase-by-phase log and
-`CLAUDE_HANDOFF.md` for the current session checkpoint and exact next task.
+The architecture PDF and final manifest are submission evidence. Development
+handoffs and `docs/FINAL_AUDIT.md` retain historical context, not a substitute
+for the final workbook's observed counts.
