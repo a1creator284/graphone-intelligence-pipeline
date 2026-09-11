@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, TypeVar, Literal
+from typing import Any, TypeVar
 
-from fastapi import Query
+from fastapi import HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +35,7 @@ class PageParams:
 
 
 def page_params(
-    sort: Literal["recent", "oldest", "name", "source", "records"] = Query("recent"),
+    sort: str = Query("recent", max_length=100),
     limit: int = Query(
         DEFAULT_PAGE_SIZE,
         ge=1,
@@ -81,6 +81,8 @@ async def paginate(
     search_columns: Sequence[Any] | None = None,
 ) -> Page[SchemaT]:
     """Return one bounded page of ``model`` rows mapped through ``schema``."""
+    if params.sort not in {"recent", "oldest", "name", "source"}:
+        raise HTTPException(status_code=422, detail="Unsupported sort key")
     count_stmt = select(func.count()).select_from(model)
     stmt = select(model)
 

@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from dashboard.backend.app.config import get_dashboard_settings
-from dashboard.backend.app.routers import entities, health, records, stats
+from dashboard.backend.app.routers import details, entities, health, records, stats
 from src.storage.database import dispose_engine, init_engine
 
 API_PREFIX = "/api"
@@ -57,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(stats.router, prefix=API_PREFIX)
     app.include_router(records.router, prefix=API_PREFIX)
     app.include_router(entities.router, prefix=API_PREFIX)
+    app.include_router(details.router, prefix=API_PREFIX)
     return app
 
 

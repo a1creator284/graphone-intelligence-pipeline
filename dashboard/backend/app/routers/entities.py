@@ -29,7 +29,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dashboard.backend.app.db import get_session
-from dashboard.backend.app.pagination import PageParams, page_params
+from dashboard.backend.app.pagination import PageParams, page_params, timestamp_expression
 from dashboard.backend.app.schemas import CanonicalEntityOut, Page
 from src.storage.models import CanonicalEntity, EntityAlias, Job, Product, Startup
 
@@ -112,10 +112,11 @@ async def list_entities(
     if sort == "name":
         stmt = stmt.order_by(CanonicalEntity.canonical_name.asc())
     elif sort == "recent":
-        stmt = stmt.order_by(CanonicalEntity.created_at.desc(), CanonicalEntity.canonical_name.asc())
+        stmt = stmt.order_by(timestamp_expression(session, CanonicalEntity.created_at).desc().nulls_last(), CanonicalEntity.canonical_name.asc())
     else:
         stmt = stmt.order_by(total_records.desc(), CanonicalEntity.canonical_name.asc())
 
+    stmt = stmt.order_by(CanonicalEntity.id.asc())
     total = await session.scalar(count_stmt) or 0
 
     rows = (
@@ -126,13 +127,19 @@ async def list_entities(
     entity_ids = [row[0].id for row in rows]
     aliases_by_entity: dict[UUID, list[str]] = defaultdict(list)
     if entity_ids:
-        alias_rows = (
-            await session.execute(
-                select(EntityAlias.canonical_entity_id, EntityAlias.alias)
-                .where(EntityAlias.canonical_entity_id.in_(entity_ids))
-                .order_by(EntityAlias.alias.asc())
-            )
-        ).all()
+        ranked = select(
+            EntityAlias.canonical_entity_id, EntityAlias.alias,
+            func.row_number().over(
+                partition_by=EntityAlias.canonical_entity_id,
+                order_by=(EntityAlias.alias.asc(), EntityAlias.id.asc()),
+            ).label("rank"),
+        ).where(EntityAlias.canonical_entity_id.in_(entity_ids)).subquery()
+        alias_rows = (await session.execute(
+            select(ranked.c.canonical_entity_id, ranked.c.alias)
+            .where(ranked.c.rank <= 20)
+            .order_by(ranked.c.canonical_entity_id, ranked.c.rank)
+            .limit(params.limit * 20)
+        )).all()
         for entity_id, alias in alias_rows:
             aliases_by_entity[entity_id].append(alias)
 
