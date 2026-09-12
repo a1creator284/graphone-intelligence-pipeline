@@ -1,77 +1,74 @@
-# Task 4: real-workbook import — blocked preflight checkpoint
+# Task 4: real-workbook import — implemented
 
-Inspected on 2026-09-11 against dashboard baseline
-`5c594ecd03eef677da9ff74f8f9fd680e3641270`.
+Supersedes the 2026-09-11 "blocked preflight checkpoint" that previously lived
+in this file. The blocker recorded there was the missing `entity_type`
+evidence; it has been resolved by an **explicitly approved, documented
+application policy** rather than by guessing a type. The importer now exists.
 
-**No importer implemented and no database writes performed.** The requested
-stop-on-ambiguity rule was triggered. This is an inspection checkpoint, not a
-successful import or a complete validation suite.
+Full documentation: **[`dashboard/importer/README.md`](../importer/README.md)**.
 
-## Blocking entity-type ambiguity
+## What exists now
 
-The dashboard reuses `src/storage/models.py`; it has no separate ORM schema.
-`CanonicalEntity.entity_type` is a String(30), with documented semantics
-`company|other` and a default of `company`. The resolver also defaults to
-`company` (`src/resolution/resolver.py:95,253`). That default does not establish
-a publisher's real type.
+| Path | Purpose |
+| --- | --- |
+| `dashboard/importer/workbook.py` | Read-only XLSX reader; lossless `__part_N` continuation rejoin; strict cell coercion. |
+| `dashboard/importer/validate.py` | Whole-workbook validation before any DB access; canonical reconstruction; `entity_type` policy. |
+| `dashboard/importer/loader.py` | Single-transaction upsert; bounded replace/reset. |
+| `dashboard/importer/cli.py` | `python -m dashboard.importer`. |
+| `tests/test_dashboard_importer.py` | 56 tests; synthetic workbook + in-memory SQLite. |
 
-`Product.startup_name` means vendor/publisher, not necessarily a startup.
-`src/crawlers/huggingface_products.py:40,306-313` explicitly derives it from
-an organization/user author or repository owner namespace. The product
-pipeline resolves that publisher (`src/pipeline/products.py:264-271`).
-Neither the workbook's product headers nor its mapping-log headers contain
-an authoritative entity type.
+No changes were made to `src/`, to any assessment artifact, or to
+`submission/graphone_final.xlsx`.
 
-A concrete unresolved case:
+## Exact local import command (on the Mac, from the repo root)
 
-- Canonical entity ID: `3953682d-497b-4b4d-bba2-d8ae6dc2456a`
-- Canonical name: `IndexTeam`
-- Explicit normalized name: `indexteam`
-- Product ID: `01f28282-1bcb-42bf-b20a-a1c14f5c80f8`
-- Product source: `huggingface_spaces`
-- Product URL: https://huggingface.co/spaces/IndexTeam/IndexTTS-2-Demo
-- Mapping-log ID: `c3d09fe3-fd94-4043-83bc-01ef8f471e4f`
-- Mapping method: `created`
-- Mapping timestamp: `2026-09-11T09:27:54.186700+00:00`
-- No linked Startup record. Product metadata contains hub ID, creation and
-  modification timestamps, license, likes, SDK, and tags, but no owner type.
+```bash
+export DATABASE_URL='postgresql+asyncpg://graphone:graphone@localhost:5432/graphone'
+python -m dashboard.importer --validate-only   # dry run; opens no DB connection
+python -m dashboard.importer --replace         # real import, one transaction
+```
 
-This evidence establishes a publisher namespace, not `company` versus
-`other`. Inferring type from its spelling, treating every publisher as a
-company, or silently interpreting `other` as unknown would be a guess.
+## How the previous blocker was resolved
 
-There are 997 distinct Startup-linked canonical IDs and 353 Product-linked
-canonical IDs, with one shared ID: 352 IDs are product-only. That is a
-relationship distribution, **not a verified entity-type distribution**.
-It does not claim that every product-only entity has the same ambiguity.
-The IndexTeam case alone triggers the mandatory stop.
+`CanonicalEntity.entity_type` is `String(30)` documented as `company|other`,
+and the workbook exports no authoritative type. Rather than inferring a type
+from a name or treating every publisher as a company, the importer applies a
+deterministic evidence-only policy and labels it as a dashboard/application
+classification, **not** source-provided metadata:
 
-To resume, provide authoritative type evidence keyed by canonical entity ID
-(for example the original canonical-entity export), or explicitly approve a
-documented application policy for otherwise untyped publishers. Additional
-entities may still need authoritative evidence; no types have been assigned.
+1. referenced by ≥ 1 Startup → `company`
+2. referenced by ≥ 1 Job → `company`
+3. otherwise → `other`
 
-## Database environment blocker
+A name's spelling is never inspected, and being a Hugging Face / OpenRouter
+publisher is never company evidence (`Product.startup_name` is the
+vendor/publisher, which is exactly why a Product reference does not qualify).
+`other` was confirmed to be inside the model's documented vocabulary, so no new
+value is introduced; if the policy ever produced an unrepresentable value the
+import raises `EntityTypeUnsupportedError` and stops.
 
-The requested target is PostgreSQL `graphone`, user `graphone`,
-`localhost:5432`. In this sandbox a TCP check returned connection refused
-(error 111). No DATABASE_URL/PostgreSQL environment configuration was present,
-and the PostgreSQL client/server executables were not available on the
-checked paths. Therefore the **live database schema, demo state, and counts
-could not be inspected**. Model source was inspected, not the live schema.
+**IndexTeam** (`3953682d-497b-4b4d-bba2-d8ae6dc2456a`) has only a Product
+reference, so under this policy it is **`other`**. A test pins that exact
+canonical ID.
 
-Do not initialize a replacement database and describe it as the previously
-verified database. Restore access to the intended instance and supply its
-connection configuration through the environment before proceeding.
+Resulting distribution on the real workbook: **997 `company`, 352 `other`**
+(1349 canonical entities total).
 
-## Read-only workbook checks completed
+## Database environment
 
-Input: `submission/graphone_final.xlsx`
+The Mac PostgreSQL (`graphone@localhost:5432/graphone`) is still **not**
+reachable from the coding-agent sandbox, so the real import was not executed
+against it from here and no claim is made that it was. The importer was instead
+exercised end-to-end against an isolated SQLite database using the real
+workbook, twice, proving the loader and its idempotency. The user runs the
+command above locally to populate PostgreSQL.
 
-SHA-256:
-`2270cbbff3ed92c6a991e12ad6d17326ddc5462d162e3c347803b9ba5645b5d9`
+No replacement database was initialised and described as the verified one.
 
-An ad hoc Python/openpyxl assertion pass, without writing files, verified:
+## Read-only workbook checks (unchanged, now enforced in code)
+
+Input: `submission/graphone_final.xlsx`,
+SHA-256 `2270cbbff3ed92c6a991e12ad6d17326ddc5462d162e3c347803b9ba5645b5d9`.
 
 | Sheet (exact order) | Records |
 | --- | ---: |
@@ -82,62 +79,55 @@ An ad hoc Python/openpyxl assertion pass, without writing files, verified:
 | News | 45 |
 | Entity Mapping Log | 2000 |
 
-- No duplicate headers or record IDs within a sheet; `id` and
-  `export_as_of_utc` headers present. Complete schema/header validation is
-  still required; this was not a substitute for the requested test suite.
-- All populated record, canonical, raw-document, provenance and crawl-run ID
-  fields checked as UUIDs; populated timestamps checked as timezone-aware
-  ISO timestamps.
-- All domain canonical references resolve to explicit mapping records.
-- 1,349 canonical IDs, each with exactly one explicit `created` mapping row;
-  nonempty canonical/normalized names on that row and consistent canonical
-  names across its mapping records.
-- Mapping methods: created=1349, normalized_exact=641, alias=7, fuzzy=3.
-- 88 distinct raw-document IDs; each domain raw_document_id matches its
-  provenance_id; repeated provenance records agree across all exported
-  provenance fields.
-- 5,090 JSON cells parsed as the expected object/list shape, after joining
-  continuation columns in numeric order where present.
-- All 45 News full_text values, reassembled from continuation columns,
-  exactly match the full_text embedded in reassembled extracted_metadata.
+The checks that were previously ad hoc are now part of
+`dashboard/importer/validate.py` and run before every import: exact sheets and
+order, required headers (covering every ORM column), row counts, UUID validity,
+duplicate IDs, every declared unique constraint, timezone-aware timestamps,
+JSON shape, News continuation agreement, raw-document/provenance consistency,
+refusal of crawl-run references, and all foreign keys.
 
-No workbook contents were corrected, normalized, or overwritten.
+Mapping methods: `created` 1349, `normalized_exact` 641, `alias` 7, `fuzzy` 3.
+88 distinct raw documents, each domain `raw_document_id` equal to its
+`provenance_id`, with repeated provenance groups agreeing on all eleven fields.
 
-## Required import behavior once unblocked (not implemented)
+No workbook contents were corrected, normalized or overwritten.
 
-- Validate the complete workbook before any DB mutation: exact six sheets,
-  required headers, expected counts, IDs, timestamps, safe JSON, continuation
-  integrity, foreign keys, uniqueness, schema compatibility and entity types.
-- Use the explicit `created` mapping row for canonical_name and
-  normalized_name, preserving its canonical_entity_id. Other mapping rows
-  describe input-name normalization, which can differ for aliases/fuzzy hits.
-  Use the earliest explicit mapping created_at for each canonical ID, never
-  import time. Preserve every one of the 2,000 mapping rows unchanged.
-- Reconstruct RawDocument rows from explicit provenance fields and original
-  IDs, preserving source/page distinctions. Do not invent crawl-run parents
-  or raw payload files. Handle any unsupported references by failing safely.
-- Keep exact domain IDs, raw_document_id, canonical_entity_id, sources,
-  metadata and timestamps. Rejoin News continuation strings before parsing
-  JSON, and verify full-text agreement. Do not fetch local full-text paths.
-- The workbook has no authoritative EntityAlias rows or alias IDs. Leave
-  aliases absent on a clean target; do not derive invented aliases from the
-  seven alias decisions or three fuzzy decisions. Audit decisions remain.
-- Inspect actual DB data before choosing a reset scope. Do not silently
-  delete DreamRP or unrelated records, mix the final dataset with demo rows,
-  or truncate tables. Any replacement needs explicit operator-approved scope
-  and must include all changes in a single rollback-capable transaction.
-- Add focused automated tests for all requested validation cases, ambiguous
-  type rejection, alias non-fabrication, mapping/provenance fidelity, zero
-  Jobs, injected transaction failure, unrelated-data protection and a second
-  import producing identical contents without duplicates.
+## Behaviour summary
 
-**Exact import command:** unavailable; no importer exists at this checkpoint.
-Do not run the assessment pipeline as an import substitute. Document the
-actual command and replacement authorization once implemented and tested.
+* **Validation first.** Validation imports no database session at all, so a
+  failure performs zero writes structurally. Exit code `2`.
+* **One transaction.** Replace + all nine tables in a single `session.begin()`.
+  Any error rolls back everything, including the replace deletion. Exit code
+  `1`. Two tests prove it.
+* **Idempotent.** Keyed on the workbook's own primary keys; a second run
+  inserts 0 rows and leaves counts, IDs and relationships identical.
+* **Bounded reset.** `--replace` deletes rows (never `TRUNCATE`) from only
+  `news, jobs, research_papers, products, startups, entity_mapping_log,
+  entity_aliases, raw_documents, canonical_entities`, child-first. It never
+  touches `sources`, `crawl_runs`, `crawl_jobs`, `llm_requests` or
+  `processing_errors`, and creates/drops/alters no tables. Without `--replace`
+  nothing is deleted at all.
+* **`created_at`** is the earliest explicit mapping-log timestamp per canonical
+  ID, never import time.
 
-**DB counts/type distribution after import:** unavailable; no import occurred.
-**Rollback and idempotency:** not run and not claimed. No transaction started.
+## Documented limitations (not worked around)
 
-Only this dashboard document is part of the checkpoint. No changes to `src/`,
-assessment artifacts, submission files, database files or generated outputs
-are included. No merge or push to `genspark_ai_developer` is authorized.
+* **`entity_aliases`: 0 rows imported.** The workbook exports no alias rows and
+  no authoritative alias IDs, so none are created. The 7 `alias` and 3 `fuzzy`
+  decisions remain preserved in `entity_mapping_log` as audit records. Aliases
+  were **not** imported; the entity view will show `alias_count = 0`.
+* **`crawl_runs`: 0 rows created**; `raw_documents.crawl_run_id` stays NULL. A
+  populated crawl-run reference fails validation rather than inventing a parent.
+* **`raw_content_location`** imported exactly as exported (NULL for all 88). No
+  raw payload is invented or fetched.
+* **`full_text` / `full_text_status`** are export-only columns; the body lives
+  in `News.extracted_metadata`, as the ORM stores it.
+
+## Expected counts after `--replace`
+
+`canonical_entities` 1349 · `entity_aliases` 0 · `entity_mapping_log` 2000 ·
+`raw_documents` 88 · `startups` 1000 · `products` 1000 ·
+`research_papers` 1000 · `jobs` **0** · `news` 45.
+
+Jobs remain exactly zero because the workbook contains zero Jobs. No dataset
+was padded.
