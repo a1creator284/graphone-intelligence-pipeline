@@ -60,7 +60,9 @@ class Settings(BaseSettings):
     llm_max_retries: int = 3
     # Approximate token budget per provider/model; used by the chunker to
     # decide when a document needs to be split (see extraction/chunker.py).
-    llm_token_budget: int = 12000
+    llm_token_budget: int = Field(default=12000, ge=1)
+    # Bound 413 recovery even when system/schema overhead cannot fit.
+    llm_max_split_depth: int = Field(default=8, ge=0, le=16)
 
     # ---- OpenAlex --------------------------------------------------------
     # OpenAlex asks unauthenticated clients to identify themselves with a

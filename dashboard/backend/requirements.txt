@@ -1,0 +1,5 @@
+# Dashboard backend extras. Install *after* the repository-root
+# requirements.txt -- the API reuses the pipeline's SQLAlchemy models,
+# asyncpg driver and settings object rather than re-declaring them.
+fastapi==0.115.5
+uvicorn[standard]==0.32.1

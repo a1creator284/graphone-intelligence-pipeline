@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
 
@@ -9,8 +10,22 @@ from bs4 import BeautifulSoup
 from src.config.logging import get_logger
 from src.crawlers.base import DiscoveredUrl, SourceAdapter
 from src.crawlers.http import AsyncHttpClient
+from src.errors import ParsingError
 
 logger = get_logger(component="sitemap_jobs_base")
+
+
+# Match whole terms, not incidental substrings such as "paid" or "email".
+_AI_TERMS = re.compile(
+    r"\b(?:AI|ML|LLMs?|MLOps|artificial intelligence|machine learning|deep learning|"
+    r"generative AI|natural language processing|NLP|computer vision|data scien(?:ce|tist)s?)\b",
+    re.IGNORECASE,
+)
+
+
+def is_ai_job(*values: object) -> bool:
+    """Require explicit AI/data-science evidence in source-provided fields."""
+    return any(_AI_TERMS.search(str(value or "")) for value in values)
 
 
 def extract_job_posting_jsonld(html: str) -> dict | None:

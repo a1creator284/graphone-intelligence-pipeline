@@ -27,7 +27,7 @@ class GeminiProvider(LLMProvider):
         if not self._settings.gemini_api_key or not self._settings.gemini_model:
             raise AuthenticationError("Gemini API key or model not configured.")
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._settings.gemini_model}:generateContent?key={self._settings.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._settings.gemini_model}:generateContent"
         
         schema_json = json.dumps(schema.model_json_schema())
         augmented_system_instruction = f"{system_instruction}\n\nYou MUST respond in strictly valid JSON matching this schema:\n{schema_json}"
@@ -39,7 +39,7 @@ class GeminiProvider(LLMProvider):
         }
 
         # retry=False because retry orchestration belongs to Task 3 (orchestrator)
-        result = await self._http_client.post(url, json=payload, retry=False)
+        result = await self._http_client.post(url, headers={"x-goog-api-key": self._settings.gemini_api_key}, json=payload, retry=False)
 
         try:
             data = json.loads(result.text)
@@ -49,12 +49,12 @@ class GeminiProvider(LLMProvider):
         try:
             # Extract JSON string from Gemini response format
             text_response = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError) as exc:
+        except (KeyError, IndexError, TypeError) as exc:
             raise ParsingError("Provider response did not match expected structure") from exc
 
         try:
             parsed_json = json.loads(text_response)
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, TypeError) as exc:
             raise ParsingError("Provider generated malformed JSON payload") from exc
 
         try:

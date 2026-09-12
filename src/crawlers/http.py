@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 from dataclasses import dataclass
 
 import httpx
 
 from src.config.logging import get_logger
 from src.config.settings import get_settings
-from src.crawlers.retry import retry_async
+from src.crawlers.retry import parse_retry_after, retry_async
 from src.errors import BlockedSourceError, NetworkError, PayloadTooLargeError, RateLimitError, TimeoutErrorPipeline
 
 logger = get_logger(component="http_crawler")
@@ -82,7 +83,7 @@ class AsyncHttpClient:
                 retry_after = response.headers.get("Retry-After")
                 raise RateLimitError(
                     f"429 from {url}",
-                    retry_after_seconds=float(retry_after) if retry_after else None,
+                    retry_after_seconds=parse_retry_after(retry_after),
                     context={"url": url},
                 )
             if response.status_code == 413:
@@ -95,11 +96,10 @@ class AsyncHttpClient:
                 remaining = response.headers.get("X-RateLimit-Remaining") or response.headers.get("x-ratelimit-remaining")
                 reset = response.headers.get("X-RateLimit-Reset") or response.headers.get("x-ratelimit-reset")
                 if remaining == "0":
-                    retry_after = None
-                    if reset:
-                        import time
-
-                        retry_after = max(0.0, float(reset) - time.time())
+                    retry_after = parse_retry_after(response.headers.get("Retry-After"))
+                    if retry_after is None and reset:
+                        epoch = parse_retry_after(reset)
+                        retry_after = max(0.0, epoch - time.time()) if epoch is not None else None
                     raise RateLimitError(
                         f"403 rate-limit-exhausted from {url}",
                         retry_after_seconds=retry_after,
@@ -161,7 +161,7 @@ class AsyncHttpClient:
                 retry_after = response.headers.get("Retry-After")
                 raise RateLimitError(
                     f"429 from {url}",
-                    retry_after_seconds=float(retry_after) if retry_after else None,
+                    retry_after_seconds=parse_retry_after(retry_after),
                     context={"url": url},
                 )
             if response.status_code == 413:
@@ -170,10 +170,10 @@ class AsyncHttpClient:
                 remaining = response.headers.get("X-RateLimit-Remaining") or response.headers.get("x-ratelimit-remaining")
                 reset = response.headers.get("X-RateLimit-Reset") or response.headers.get("x-ratelimit-reset")
                 if remaining == "0":
-                    retry_after = None
-                    if reset:
-                        import time
-                        retry_after = max(0.0, float(reset) - time.time())
+                    retry_after = parse_retry_after(response.headers.get("Retry-After"))
+                    if retry_after is None and reset:
+                        epoch = parse_retry_after(reset)
+                        retry_after = max(0.0, epoch - time.time()) if epoch is not None else None
                     raise RateLimitError(
                         f"403 rate-limit-exhausted from {url}",
                         retry_after_seconds=retry_after,

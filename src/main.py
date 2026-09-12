@@ -29,7 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target", type=int, default=None, help="Target record count for this run")
     parser.add_argument("--workers", type=int, default=None, help="Override MAX_CONCURRENCY for this run")
     parser.add_argument("--dry-run", action="store_true", help="Discover/validate without writing to the database")
-    parser.add_argument("--export", action="store_true", help="Export current DB contents to CSV/XLSX/Sheets")
+    parser.add_argument("--export", action="store_true", help="Export current DB contents to a six-tab XLSX (no Google API call)")
+    parser.add_argument("--output", default="submission/graphone_final.xlsx", help="XLSX output path for --export")
     return parser
 
 
@@ -147,7 +148,7 @@ async def _run_jobs(args: argparse.Namespace) -> None:
             "target_not_fully_met",
             target=result.target,
             valid_records=result.valid_records,
-            note="Jobs adapters will be wired in subsequent tasks.",
+            note="Only genuine, timezone-dated Jobs inside the strict 24h window are stored; no padding.",
         )
 
 
@@ -228,7 +229,21 @@ async def _run_products(args: argparse.Namespace) -> None:
 
 async def _run(args: argparse.Namespace) -> int:
     if args.export:
-        logger.info("export_not_yet_wired", note="Export module lands in Phase 13")
+        import json
+        from pathlib import Path
+        from src.config.settings import get_settings
+        from src.export import export_xlsx
+        from src.storage.database import get_session_factory
+
+        async with engine_scope():
+            async with get_session_factory()() as session:
+                report = await export_xlsx(
+                    session, args.output, raw_root=get_settings().raw_storage_local_path,
+                )
+        Path(args.output).with_suffix(".manifest.json").write_text(
+            json.dumps(report, indent=2) + "\n", encoding="utf-8",
+        )
+        logger.info("export_complete", **report)
         return 0
 
     if not args.vertical:

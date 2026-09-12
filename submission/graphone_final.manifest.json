@@ -1,0 +1,53 @@
+{
+  "output": "submission/graphone_final.xlsx",
+  "exported_at_utc": "2026-09-11T09:34:44.953842+00:00",
+  "freshness_window_hours": 24,
+  "future_tolerance_seconds": 0,
+  "google_sheet_created": false,
+  "tabs": {
+    "Startups": {
+      "database_rows": 1000,
+      "rows": 1000,
+      "excluded_by_freshness": 0,
+      "missing_provenance": 0,
+      "missing_full_text": 0
+    },
+    "Products": {
+      "database_rows": 1000,
+      "rows": 1000,
+      "excluded_by_freshness": 0,
+      "missing_provenance": 0,
+      "missing_full_text": 0
+    },
+    "Research Papers": {
+      "database_rows": 1000,
+      "rows": 1000,
+      "excluded_by_freshness": 0,
+      "missing_provenance": 0,
+      "missing_full_text": 0
+    },
+    "Jobs": {
+      "database_rows": 0,
+      "rows": 0,
+      "excluded_by_freshness": 0,
+      "missing_provenance": 0,
+      "missing_full_text": 0
+    },
+    "News": {
+      "database_rows": 45,
+      "rows": 45,
+      "excluded_by_freshness": 0,
+      "missing_provenance": 0,
+      "missing_full_text": 0
+    },
+    "Entity Mapping Log": {
+      "database_rows": 2000,
+      "rows": 2000,
+      "excluded_by_freshness": 0,
+      "missing_provenance": 0,
+      "missing_full_text": 0
+    }
+  },
+  "text_encoding": "Literal XLSX strings; long fields concatenate base column then __part_2, __part_3, etc.",
+  "sha256": "2270cbbff3ed92c6a991e12ad6d17326ddc5462d162e3c347803b9ba5645b5d9"
+}

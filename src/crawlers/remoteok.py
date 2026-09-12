@@ -6,7 +6,8 @@ from collections.abc import AsyncIterator
 from src.crawlers.base import DiscoveredUrl, ParsedRecord, SourceAdapter
 from src.crawlers.http import FetchResult
 from src.errors import ParsingError
-from src.extraction.dates import parse_absolute_date
+from src.crawlers.sitemap_jobs_base import is_ai_job
+from src.validation.job_dates import parse_job_timestamp
 from src.extraction.urls import normalize_url
 
 
@@ -53,7 +54,10 @@ class RemoteOKAIAdapter(SourceAdapter):
             if not title or not company or not url:
                 continue
 
-            posted_at = parse_absolute_date(item["date"]) if item.get("date") else None
+            if not is_ai_job(title, item.get("tags"), item.get("description")):
+                continue
+
+            posted_at = parse_job_timestamp(item["date"]) if item.get("date") else None
             
             records.append(
                 ParsedRecord(
@@ -67,6 +71,8 @@ class RemoteOKAIAdapter(SourceAdapter):
                         "is_remote": True,
                         "role_family": None,
                         "raw_document_id": None,
+                        "metadata_json": {"raw_record": item, "date_field": "date",
+                                          "date_value": item.get("date"), "source_url": url},
                     },
                     source_name=self.name,
                     source_url=normalize_url(url),

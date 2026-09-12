@@ -7,14 +7,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
+from pathlib import Path
+
+from pydantic import HttpUrl
+from sqlalchemy import select
+
+from src.config.sources import Vertical, get_sources_for_vertical
+from src.errors import BlockedSourceError
+from src.extraction.urls import normalize_url
+from src.storage.models import Job
+from src.validation.job_dates import parse_job_timestamp
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.logging import get_logger
 from src.config.settings import get_settings
 
-
-import traceback
 
 from src.crawlers.builtin import BuiltInAIAdapter
 from src.crawlers.http import AsyncHttpClient
@@ -74,9 +83,14 @@ async def run_jobs_pipeline(
     """
     if reference_time is None:
         reference_time = datetime.now(timezone.utc)
+    reference_time = parse_job_timestamp(reference_time)
+    if reference_time is None:
+        raise ValueError("Jobs reference_time must be timezone-aware")
 
     settings = get_settings()
     result = JobsPipelineResult(target=target)
+    if target <= 0:
+        return result
 
     job_repo = JobRepository(session)
     raw_doc_repo = RawDocumentRepository(session)
@@ -91,20 +105,16 @@ async def run_jobs_pipeline(
         reference_time=reference_time.isoformat(),
         target=target,
         max_concurrency=max_concurrency,
-        clock_skew_tolerance_seconds=settings.clock_skew_tolerance_seconds,
-        freshness_window_hours=settings.freshness_window_hours,
+        clock_skew_tolerance_seconds=0,
+        freshness_window_hours=24,
     )
 
     async with AsyncHttpClient(max_concurrency=max_concurrency) as http_client:
-        per_adapter_target = max(1, target // len(ADAPTER_CLASSES))
-
-        adapters = [
-            RemoteOKAIAdapter(http_client),
-            WorkingNomadsAIAdapter(http_client),
-            YCombinatorWhoIsHiringAdapter(http_client),
-            WellfoundAIAdapter(http_client),
-            BuiltInAIAdapter(http_client),
-        ]
+        enabled = {source.name for source in get_sources_for_vertical(Vertical.JOBS)}
+        adapters = [cls(http_client) for cls in ADAPTER_CLASSES if cls.name in enabled]
+        result.by_source = {adapter.name: 0 for adapter in adapters}
+        # max_items caps discovery URLs, not accepted records. Do not allocate
+        # tiny quotas to a source before its stale records have been filtered.
 
         all_records = []
         for adapter in adapters:
@@ -112,14 +122,24 @@ async def run_jobs_pipeline(
                 stats, records = await run_adapter(
                     adapter,
                     max_concurrency=max_concurrency,
-                    max_items=per_adapter_target,
+                    max_items=target,
                 )
 
                 result.discovered += stats.discovered
                 result.fetched += stats.fetched
                 result.fetch_failed += stats.fetch_failed
                 result.blocked += stats.blocked
-                result.by_source[adapter.name] = len(records)
+                for message in stats.errors:
+                    await error_repo.record(
+                        source_name=adapter.name, url="N/A", error_category="SourceError",
+                        message=message, context={"stage": "fetch_or_parse"},
+                    )
+                if stats.blocked:
+                    await error_repo.record(
+                        source_name=adapter.name, url="N/A", error_category="BlockedSourceError",
+                        message=f"{stats.blocked} job fetches blocked; no substitute records",
+                        context={},
+                    )
 
                 logger.info(
                     "adapter_complete",
@@ -131,8 +151,15 @@ async def run_jobs_pipeline(
                     blocked=stats.blocked,
                 )
 
-                all_records.extend(records)
+                all_records.extend(sorted(records, key=lambda record: (
+                    record.source_url, str(record.data.get("posted_at")),
+                    record.fetch_result.content_hash if record.fetch_result else "",
+                )))
             except Exception as exc:
+                if isinstance(exc, BlockedSourceError):
+                    result.blocked += 1
+                else:
+                    result.fetch_failed += 1
                 logger.error(
                     "adapter_failed",
                     source=adapter.name,
@@ -147,10 +174,18 @@ async def run_jobs_pipeline(
                     context={},
                 )
 
+        seen_urls = set()
         for record in all_records:
+            if result.valid_records >= target:
+                break
             data = dict(record.data)
             data["source_name"] = record.source_name
             result.parsed += 1
+            data["url"] = normalize_url(data["url"]) if isinstance(data.get("url"), str) else data.get("url")
+            metadata = dict(data.get("metadata_json") or {})
+            metadata["source_url"] = normalize_url(record.source_url)
+            metadata["collected_at"] = reference_time.isoformat()
+            data["metadata_json"] = metadata
 
             validated, error = validate_job_record(data)
             if validated is None:
@@ -174,8 +209,8 @@ async def run_jobs_pipeline(
             is_fresh_result, rejection_reason = is_fresh(
                 validated.posted_at,
                 reference_time,
-                window_hours=settings.freshness_window_hours,
-                clock_skew_tolerance_seconds=settings.clock_skew_tolerance_seconds,
+                window_hours=24,
+                clock_skew_tolerance_seconds=0,
             )
 
             if not is_fresh_result:
@@ -205,37 +240,75 @@ async def run_jobs_pipeline(
                 result.rejection_reasons.append(f"{record.source_url}: {rejection_reason}")
                 continue
 
-            raw_document_id = None
-            if record.fetch_result is not None:
-                try:
-                    raw_doc = await raw_doc_repo.get_or_create(
-                        source_name=record.source_name,
-                        source_url=record.source_url,
-                        canonical_url=record.fetch_result.url,
-                        http_status=record.fetch_result.status_code,
-                        content_hash=record.fetch_result.content_hash,
-                        extraction_status="extracted",
-                        publication_date_candidates={"posted_at": validated.posted_at.isoformat()},
-                    )
-                    raw_document_id = raw_doc.id
-                except Exception as exc:
-                    result.rejected += 1
-                    logger.warning(
-                        "raw_document_persistence_error",
-                        url=record.source_url,
-                        source=record.source_name,
-                        error=str(exc),
-                    )
-                    await error_repo.record(
-                        source_name=record.source_name,
-                        url=record.source_url,
-                        error_category="RawDocumentPersistenceError",
-                        message=str(exc),
-                        context={},
-                    )
-                    continue
+            fetched = record.fetch_result
+            try:
+                HttpUrl(record.source_url)
+                if record.source_name not in enabled:
+                    raise ValueError("Record from an unregistered or disabled Jobs source")
+                if fetched is None or not 200 <= fetched.status_code < 300 or not fetched.text:
+                    raise ValueError("Missing successful raw source response")
+                HttpUrl(fetched.url)
+                raw_record = metadata.get("raw_record")
+                field_name = metadata.get("date_field")
+                allowed_date_fields = {
+                    "remoteok_ai_jobs": "date", "workingnomads_ai_jobs": "pub_date",
+                    "ycombinator_hn_whoishiring": "created_at",
+                    "wellfound_ai_jobs": "datePosted", "builtin_ai_jobs": "datePosted",
+                }
+                if not isinstance(raw_record, dict) or field_name != allowed_date_fields.get(record.source_name):
+                    raise ValueError("Missing source posting-date evidence")
+                if (raw_record.get(field_name) != metadata.get("date_value")
+                        or parse_job_timestamp(metadata.get("date_value")) != validated.posted_at):
+                    raise ValueError("Posting timestamp does not match raw source evidence")
+            except (ValueError, TypeError) as exc:
+                result.invalid_records += 1
+                result.rejection_reasons.append(f"{record.source_url}: {exc}")
+                await error_repo.record(
+                    source_name=record.source_name, url=record.source_url,
+                    error_category="provenance_error", message=str(exc), context={},
+                )
+                continue
+
+            source_url = metadata["source_url"]
+            # Global URL dedup within and across runs, in configured source order.
+            existing = await session.execute(select(Job.id).where(
+                (Job.url == validated.url) | (Job.metadata_json["source_url"].as_string() == source_url)
+            ).limit(1))
+            if validated.url in seen_urls or source_url in seen_urls or existing.first() is not None:
+                result.duplicates += 1
+                continue
+
+            try:
+                content_hash = hashlib.sha256(fetched.text.encode("utf-8")).hexdigest()
+                raw_path = Path(settings.raw_storage_local_path).resolve() / "jobs" / f"{content_hash}.txt"
+                raw_path.parent.mkdir(parents=True, exist_ok=True)
+                if not raw_path.exists():
+                    raw_path.write_text(fetched.text, encoding="utf-8")
+                # A feed response may contain many jobs. RawDocument describes the
+                # fetched feed; each Job preserves its own URL/raw item/date evidence.
+                raw_doc = await raw_doc_repo.get_or_create(
+                    source_name=record.source_name,
+                    source_url=fetched.url,
+                    canonical_url=fetched.url,
+                    http_status=fetched.status_code,
+                    content_hash=content_hash,
+                    raw_content_location=str(raw_path),
+                    extraction_status="extracted",
+                )
+                raw_document_id = raw_doc.id
+                metadata["fetch_url"] = fetched.url
+                metadata["content_hash"] = content_hash
+            except Exception as exc:
+                result.rejected += 1
+                await session.rollback()
+                await error_repo.record(
+                    source_name=record.source_name, url=record.source_url,
+                    error_category="RawDocumentPersistenceError", message=str(exc), context={},
+                )
+                continue
 
             payload = validated.model_dump(exclude={"schema_version", "record_type"})
+            payload["metadata_json"] = metadata
             payload["raw_document_id"] = raw_document_id
             payload["collected_at"] = reference_time
 
@@ -266,6 +339,8 @@ async def run_jobs_pipeline(
                 inserted = await job_repo.upsert(**payload)
                 if inserted:
                     result.valid_records += 1
+                    result.by_source[record.source_name] += 1
+                    seen_urls.update((validated.url, source_url))
                     logger.debug(
                         "record_persisted",
                         url=record.source_url,
@@ -280,6 +355,7 @@ async def run_jobs_pipeline(
                         source=record.source_name,
                     )
             except Exception as exc:
+                await session.rollback()
                 result.rejected += 1
                 result.rejection_reasons.append(f"{record.source_url}: {exc}")
                 logger.warning(

@@ -181,12 +181,15 @@ class JobRecord(BaseModel):
             raise ValueError("source_name must not be blank/whitespace-only")
         return stripped
 
-    @field_validator("posted_at")
+    @field_validator("posted_at", mode="before")
     @classmethod
-    def _posted_at_utc(cls, v: datetime) -> datetime:
-        if v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v.astimezone(timezone.utc)
+    def _posted_at_utc(cls, v: object) -> datetime:
+        from src.validation.job_dates import parse_job_timestamp
+
+        parsed = parse_job_timestamp(v)
+        if parsed is None:
+            raise ValueError("posted_at must be an explicit, timezone-aware posting timestamp")
+        return parsed
 
 
 def validate_job_record(data: dict) -> tuple[JobRecord | None, str | None]:
